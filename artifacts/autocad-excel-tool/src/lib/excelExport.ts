@@ -1,22 +1,32 @@
 import * as XLSX from "xlsx";
 import type { ParsedDxfData } from "./dxfParser";
 
+export interface FileParsedResult {
+  fileName: string;
+  data: ParsedDxfData;
+}
+
 export function exportToExcel(data: ParsedDxfData, filename: string = "autocad-data.xlsx") {
+  exportBatchToExcel([{ fileName: filename.replace(/\.xlsx$/i, ".dxf"), data }], filename);
+}
+
+export function exportBatchToExcel(results: FileParsedResult[], filename: string = "autocad-batch-data.xlsx") {
   const wb = XLSX.utils.book_new();
 
-  // ── Sheet 1: Blocks & Attributes ──────────────────────────────────────────
+  // ── Sheet 1: Blocks & Attributes ─────────────────────────────────────────
   const blockRows: Record<string, string | number>[] = [];
 
-  if (data.blocks.length === 0) {
-    blockRows.push({ Note: "No INSERT/block entities found in this DXF file." });
-  } else {
-    // Collect all unique attribute tags across all blocks
-    const allTags = new Set<string>();
-    data.blocks.forEach((b) => b.attributes.forEach((a) => allTags.add(a.tag)));
-    const tagList = Array.from(allTags).sort();
+  const allTags = new Set<string>();
+  results.forEach(({ data }) =>
+    data.blocks.forEach((b) => b.attributes.forEach((a) => allTags.add(a.tag)))
+  );
+  const tagList = Array.from(allTags).sort();
 
+  for (const { fileName, data } of results) {
+    if (data.blocks.length === 0) continue;
     data.blocks.forEach((block) => {
       const row: Record<string, string | number> = {
+        "Source File": fileName,
         "Block Name": block.blockName,
         Layer: block.layer,
         "X Position": +block.x.toFixed(4),
@@ -24,35 +34,40 @@ export function exportToExcel(data: ParsedDxfData, filename: string = "autocad-d
         "Z Position": +block.z.toFixed(4),
         Handle: block.handle || "",
       };
-      // Add each attribute tag as a column
       tagList.forEach((tag) => {
         const attr = block.attributes.find((a) => a.tag === tag);
         row[`ATTR: ${tag}`] = attr ? attr.value : "";
       });
       blockRows.push(row);
     });
+  }
 
-    // Sort by Block Name then Layer
+  if (blockRows.length === 0) {
+    blockRows.push({ Note: "No INSERT/block entities found in the uploaded DXF files." });
+  } else {
     blockRows.sort((a, b) => {
-      const nameA = String(a["Block Name"]).toLowerCase();
-      const nameB = String(b["Block Name"]).toLowerCase();
-      if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+      const fA = String(a["Source File"]).toLowerCase();
+      const fB = String(b["Source File"]).toLowerCase();
+      if (fA !== fB) return fA < fB ? -1 : 1;
+      const nA = String(a["Block Name"]).toLowerCase();
+      const nB = String(b["Block Name"]).toLowerCase();
+      if (nA !== nB) return nA < nB ? -1 : 1;
       return String(a["Layer"]).toLowerCase() < String(b["Layer"]).toLowerCase() ? -1 : 1;
     });
   }
 
   const wsBlocks = XLSX.utils.json_to_sheet(blockRows);
-  styleSheet(wsBlocks, blockRows.length);
+  autoSizeColumns(wsBlocks);
   XLSX.utils.book_append_sheet(wb, wsBlocks, "Blocks & Attributes");
 
-  // ── Sheet 2: Text & Annotations ───────────────────────────────────────────
+  // ── Sheet 2: Text & Annotations ──────────────────────────────────────────
   const textRows: Record<string, string | number>[] = [];
 
-  if (data.texts.length === 0) {
-    textRows.push({ Note: "No TEXT or MTEXT entities found in this DXF file." });
-  } else {
+  for (const { fileName, data } of results) {
+    if (data.texts.length === 0) continue;
     data.texts.forEach((t) => {
       textRows.push({
+        "Source File": fileName,
         Type: t.type,
         Content: t.content,
         Layer: t.layer,
@@ -63,30 +78,42 @@ export function exportToExcel(data: ParsedDxfData, filename: string = "autocad-d
         Handle: t.handle || "",
       });
     });
+  }
 
-    // Sort by Layer then Content
+  if (textRows.length === 0) {
+    textRows.push({ Note: "No TEXT or MTEXT entities found in the uploaded DXF files." });
+  } else {
     textRows.sort((a, b) => {
-      const layA = String(a["Layer"]).toLowerCase();
-      const layB = String(b["Layer"]).toLowerCase();
-      if (layA !== layB) return layA < layB ? -1 : 1;
+      const fA = String(a["Source File"]).toLowerCase();
+      const fB = String(b["Source File"]).toLowerCase();
+      if (fA !== fB) return fA < fB ? -1 : 1;
+      const lA = String(a["Layer"]).toLowerCase();
+      const lB = String(b["Layer"]).toLowerCase();
+      if (lA !== lB) return lA < lB ? -1 : 1;
       return String(a["Content"]).toLowerCase() < String(b["Content"]).toLowerCase() ? -1 : 1;
     });
   }
 
   const wsTexts = XLSX.utils.json_to_sheet(textRows);
-  styleSheet(wsTexts, textRows.length);
+  autoSizeColumns(wsTexts);
   XLSX.utils.book_append_sheet(wb, wsTexts, "Text & Annotations");
 
-  // ── Sheet 3: Layers ───────────────────────────────────────────────────────
-  const layerRows = data.layers.map((l) => ({ "Layer Name": l }));
-  const wsLayers = XLSX.utils.json_to_sheet(layerRows.length ? layerRows : [{ Note: "No layers found." }]);
-  XLSX.utils.book_append_sheet(wb, wsLayers, "Layers");
+  // ── Sheet 3: Summary ─────────────────────────────────────────────────────
+  const summaryRows = results.map(({ fileName, data }) => ({
+    "File Name": fileName,
+    "Block Insertions": data.blocks.length,
+    "Text Entities": data.texts.length,
+    "Unique Layers": data.layers.length,
+    "Parse Errors": data.errors.join("; ") || "None",
+  }));
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ Note: "No files processed." }]);
+  autoSizeColumns(wsSummary);
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
   XLSX.writeFile(wb, filename);
 }
 
-function styleSheet(ws: XLSX.WorkSheet, dataRowCount: number) {
-  // Auto-size columns based on header names
+function autoSizeColumns(ws: XLSX.WorkSheet) {
   const ref = ws["!ref"];
   if (!ref) return;
   const range = XLSX.utils.decode_range(ref);
@@ -95,11 +122,9 @@ function styleSheet(ws: XLSX.WorkSheet, dataRowCount: number) {
     let maxLen = 10;
     for (let R = range.s.r; R <= range.e.r; R++) {
       const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
-      if (cell && cell.v) {
-        maxLen = Math.max(maxLen, String(cell.v).length + 2);
-      }
+      if (cell && cell.v) maxLen = Math.max(maxLen, String(cell.v).length + 2);
     }
-    colWidths.push(Math.min(maxLen, 50));
+    colWidths.push(Math.min(maxLen, 60));
   }
   ws["!cols"] = colWidths.map((w) => ({ wch: w }));
 }
