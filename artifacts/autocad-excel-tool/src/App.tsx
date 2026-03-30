@@ -39,7 +39,7 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
         className="w-full h-full object-cover absolute inset-0"
         style={{ objectPosition: "center" }}
       />
-      <div className="relative z-10 flex flex-col items-center gap-6" style={{ marginTop: "52%" }}>
+      <div className="absolute bottom-10 left-0 right-0 z-10 flex justify-center">
         <button
           onClick={handleEnter}
           className="group flex items-center gap-3 px-10 py-4 rounded-xl font-bold text-base tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
