@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { parseDxf } from "@/lib/dxfParser";
 import {
   extractEngineeringData,
@@ -9,6 +9,59 @@ import { exportRaw, exportClean, exportBatchToExcel, type FileParsedResult } fro
 import { parseExcelFile, generateDxf, downloadDxf, type ImportedExcelData } from "@/lib/excelToDxf";
 
 type Tab = "extract" | "excel-to-dxf";
+
+// ── Cover / Splash page ───────────────────────────────────────────────────────
+
+function CoverPage({ onEnter }: { onEnter: () => void }) {
+  const [visible, setVisible] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 60);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleEnter = () => {
+    setLeaving(true);
+    setTimeout(onEnter, 600);
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-600 ${
+        leaving ? "opacity-0" : visible ? "opacity-100" : "opacity-0"
+      }`}
+      style={{ background: "#0a0a0a" }}
+    >
+      <img
+        src="/cover.png"
+        alt="CAD Data Engine"
+        className="w-full h-full object-cover absolute inset-0"
+        style={{ objectPosition: "center" }}
+      />
+      <div className="relative z-10 flex flex-col items-center gap-6" style={{ marginTop: "52%" }}>
+        <button
+          onClick={handleEnter}
+          className="group flex items-center gap-3 px-10 py-4 rounded-xl font-bold text-base tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
+          style={{
+            background: "linear-gradient(135deg, #c8102e 0%, #8b0000 100%)",
+            color: "#fff",
+            boxShadow: "0 0 32px rgba(200,16,46,0.5), 0 4px 24px rgba(0,0,0,0.6)",
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Launch CAD Data Engine
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type FileStatus = "pending" | "processing" | "done" | "error";
 
 interface FileEntry {
@@ -23,7 +76,10 @@ interface FileEntry {
 // ── App shell ─────────────────────────────────────────────────────────────────
 
 function App() {
+  const [showCover, setShowCover] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("extract");
+
+  if (showCover) return <CoverPage onEnter={() => setShowCover(false)} />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
