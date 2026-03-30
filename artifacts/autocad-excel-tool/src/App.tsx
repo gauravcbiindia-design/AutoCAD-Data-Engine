@@ -83,23 +83,84 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border bg-card px-6 py-4 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary shrink-0">
-            <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-lg font-bold leading-tight">AutoCAD Engineering Data Extractor</h1>
-            <p className="text-xs text-muted-foreground">Bulk extract blocks, attributes & classified text · Export to structured Excel</p>
-          </div>
-        </div>
-      </header>
 
-      <div className="border-b border-border bg-card">
-        <div className="max-w-6xl mx-auto px-6">
-          <nav className="flex gap-1 pt-2">
+      {/* ── Glass Hero Header ─────────────────────────────────────────────── */}
+      <header
+        className="relative overflow-hidden"
+        style={{ minHeight: 200 }}
+      >
+        {/* Cover image full-bleed background */}
+        <img
+          src="/cover.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ objectPosition: "center 30%" }}
+        />
+        {/* Dark gradient scrim so text is readable */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(0,0,0,0.72) 0%, rgba(10,0,0,0.55) 60%, rgba(0,0,0,0.78) 100%)",
+          }}
+        />
+
+        {/* Glass panel */}
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-8 flex flex-col gap-5">
+          <div
+            className="flex items-center gap-5 px-6 py-5 rounded-2xl"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              backdropFilter: "blur(18px) saturate(1.4)",
+              WebkitBackdropFilter: "blur(18px) saturate(1.4)",
+              border: "1px solid rgba(255,255,255,0.13)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1)",
+            }}
+          >
+            {/* Logo badge */}
+            <div
+              className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
+              style={{
+                background: "linear-gradient(135deg, #c8102e 0%, #7b0000 100%)",
+                boxShadow: "0 0 20px rgba(200,16,46,0.5)",
+              }}
+            >
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl font-bold text-white leading-tight tracking-tight">
+                CAD Data Engine
+              </h1>
+              <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.6)" }}>
+                Bulk extract blocks, attributes & classified text from AutoCAD drawings · Export to structured Excel
+              </p>
+            </div>
+
+            {/* Feature pills */}
+            <div className="hidden md:flex items-center gap-2 shrink-0">
+              {["Block Attributes", "Smart Classification", "Drawing-wise Sort", "Dual Excel Export"].map((pill) => (
+                <span
+                  key={pill}
+                  className="px-3 py-1 rounded-full text-xs font-medium"
+                  style={{
+                    background: "rgba(200,16,46,0.22)",
+                    border: "1px solid rgba(200,16,46,0.4)",
+                    color: "#ff7070",
+                  }}
+                >
+                  {pill}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Tabs as glass pills */}
+          <div className="flex gap-2">
             {[
               { id: "extract" as Tab, label: "Bulk DXF → Excel", icon: "⬇️" },
               { id: "excel-to-dxf" as Tab, label: "Excel → DXF", icon: "⬆️" },
@@ -107,18 +168,29 @@ function App() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                className="px-5 py-2 text-sm font-medium rounded-lg transition-all duration-150"
+                style={
                   activeTab === tab.id
-                    ? "border-primary text-primary bg-background"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                }`}
+                    ? {
+                        background: "rgba(200,16,46,0.85)",
+                        color: "#fff",
+                        boxShadow: "0 0 16px rgba(200,16,46,0.4)",
+                        border: "1px solid rgba(200,16,46,0.6)",
+                      }
+                    : {
+                        background: "rgba(255,255,255,0.08)",
+                        color: "rgba(255,255,255,0.7)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        backdropFilter: "blur(8px)",
+                      }
+                }
               >
                 {tab.icon} {tab.label}
               </button>
             ))}
-          </nav>
+          </div>
         </div>
-      </div>
+      </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {activeTab === "extract" ? <BulkExtractor /> : <ExcelToDxf />}
