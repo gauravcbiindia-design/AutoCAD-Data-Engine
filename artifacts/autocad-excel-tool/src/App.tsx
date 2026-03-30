@@ -39,23 +39,23 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
         className="w-full h-full object-cover absolute inset-0"
         style={{ objectPosition: "center" }}
       />
-      <div className="absolute bottom-10 left-0 right-0 z-10 flex justify-center">
+      <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center">
         <button
           onClick={handleEnter}
-          className="group flex items-center gap-3 px-10 py-4 rounded-xl font-bold text-base tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
+          className="group flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
           style={{
             background: "linear-gradient(135deg, #c8102e 0%, #8b0000 100%)",
             color: "#fff",
             boxShadow: "0 0 32px rgba(200,16,46,0.5), 0 4px 24px rgba(0,0,0,0.6)",
           }}
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
               d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
               d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          Launch CAD Data Engine
+          Launch
         </button>
       </div>
     </div>
