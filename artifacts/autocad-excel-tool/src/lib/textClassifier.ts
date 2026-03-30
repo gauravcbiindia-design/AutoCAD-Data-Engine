@@ -1,3 +1,10 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — Engineering Text Classification Engine
+ * Classifies DXF text into instrument tags, line numbers, sizes, specs and more.
+ * Proprietary software. Unauthorised use strictly prohibited.
+ */
+
 // ── Engineering Text Classification Engine ────────────────────────────────────
 // Classifies DXF text entities into useful categories for engineering drawings
 // (P&IDs, isometrics, general arrangement drawings)

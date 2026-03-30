@@ -1,3 +1,11 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — Excel to DXF Converter Module
+ * Reads engineer-edited Excel workbooks and regenerates valid DXF files
+ * with block insertions and text entities for re-import into AutoCAD.
+ * Proprietary software. Unauthorised use strictly prohibited.
+ */
+
 import * as XLSX from "xlsx";
 
 export interface ExcelBlockRow {

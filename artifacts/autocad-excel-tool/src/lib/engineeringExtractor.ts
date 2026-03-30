@@ -1,3 +1,11 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — Engineering Data Extractor
+ * Produces RAW and CLEAN structured datasets from parsed DXF data,
+ * with deduplication, sorting, and full engineering column mapping.
+ * Proprietary software. Unauthorised use strictly prohibited.
+ */
+
 // ── Engineering Data Extractor ────────────────────────────────────────────────
 // Takes parsed DXF data and produces two datasets:
 // 1. RAW — every entity as-is (block attrs + text)

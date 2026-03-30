@@ -1,3 +1,10 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — Main Application
+ * Proprietary software. Unauthorised copying, modification, distribution,
+ * or use of this software, via any medium, is strictly prohibited.
+ */
+
 import { useState, useRef, useEffect } from "react";
 import { parseDxf } from "@/lib/dxfParser";
 import {

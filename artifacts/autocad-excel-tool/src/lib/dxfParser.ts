@@ -1,3 +1,10 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — DXF Parser Module
+ * Custom raw DXF group-code scanner with ATTRIB extraction fix.
+ * Proprietary software. Unauthorised use strictly prohibited.
+ */
+
 import DxfParser from "dxf-parser";
 
 export interface BlockAttribute {

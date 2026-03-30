@@ -1,3 +1,11 @@
+/**
+ * @copyright © 2026 G. Bharti. All rights reserved.
+ * @description CAD Data Engine — Excel Export Module
+ * Generates RAW_BULK_EXPORT and CLEAN_SORTED_OUTPUT Excel workbooks
+ * from extracted engineering data. Supports folder save-back via buffer API.
+ * Proprietary software. Unauthorised use strictly prohibited.
+ */
+
 import * as XLSX from "xlsx";
 import type { ExtractionResult } from "./engineeringExtractor";
 import type { ParsedDxfData } from "./dxfParser";
