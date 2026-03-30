@@ -16,6 +16,53 @@ export function exportEngineeringExcel(result: ExtractionResult, baseName: strin
   exportClean(result, `CLEAN_SORTED_OUTPUT_${timestamp}.xlsx`);
 }
 
+export function generateRawBuffer(result: ExtractionResult): Uint8Array {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(result.rawRows.length ? result.rawRows : [{ Note: "No data" }]);
+  autoSizeColumns(ws);
+  XLSX.utils.book_append_sheet(wb, ws, "RAW_BULK_EXPORT");
+  const statsRows = [
+    { Metric: "Total Raw Entities", Value: result.stats.totalEntities },
+    { Metric: "Block / Attribute Rows", Value: result.stats.blockRows },
+    { Metric: "Text / Annotation Rows", Value: result.stats.textRows },
+    { Metric: "Filtered Out (garbage/notes/titles)", Value: result.stats.filteredOut },
+    { Metric: "Duplicates Detected", Value: result.stats.duplicates },
+    { Metric: "Generated", Value: new Date().toLocaleString() },
+  ];
+  const wsStats = XLSX.utils.json_to_sheet(statsRows);
+  autoSizeColumns(wsStats);
+  XLSX.utils.book_append_sheet(wb, wsStats, "Export_Stats");
+  return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+}
+
+export function generateCleanBuffer(result: ExtractionResult): Uint8Array {
+  const wb = XLSX.utils.book_new();
+  const cleanData = result.cleanRows.length ? result.cleanRows : [{ Note: "No clean data extracted." }];
+  const wsClean = XLSX.utils.json_to_sheet(cleanData);
+  autoSizeColumns(wsClean);
+  XLSX.utils.book_append_sheet(wb, wsClean, "CLEAN_SORTED_OUTPUT");
+  const dupes = result.cleanRows.filter((r) => r.Duplicate === "YES");
+  const wsDupes = XLSX.utils.json_to_sheet(dupes.length ? dupes : [{ Note: "No duplicates found." }]);
+  autoSizeColumns(wsDupes);
+  XLSX.utils.book_append_sheet(wb, wsDupes, "Duplicates");
+  const instrMap = new Map<string, { count: number; dwgs: Set<string> }>();
+  result.cleanRows.forEach((r) => {
+    if (r.Instrument_Type) {
+      if (!instrMap.has(r.Instrument_Type)) instrMap.set(r.Instrument_Type, { count: 0, dwgs: new Set() });
+      const entry = instrMap.get(r.Instrument_Type)!;
+      entry.count++;
+      entry.dwgs.add(r.DWG);
+    }
+  });
+  const instrRows = [...instrMap.entries()]
+    .map(([type, v]) => ({ Instrument_Type: type, Count: v.count, Drawings: [...v.dwgs].join(", ") }))
+    .sort((a, b) => b.Count - a.Count);
+  const wsInstr = XLSX.utils.json_to_sheet(instrRows.length ? instrRows : [{ Note: "No instruments found." }]);
+  autoSizeColumns(wsInstr);
+  XLSX.utils.book_append_sheet(wb, wsInstr, "Instrument_Summary");
+  return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+}
+
 export function exportRaw(result: ExtractionResult, filename: string) {
   const wb = XLSX.utils.book_new();
 

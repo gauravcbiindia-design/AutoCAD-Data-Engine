@@ -5,8 +5,56 @@ import {
   mergeAndPostProcess,
   type ExtractionResult,
 } from "@/lib/engineeringExtractor";
-import { exportRaw, exportClean, exportBatchToExcel, type FileParsedResult } from "@/lib/excelExport";
+import {
+  exportRaw, exportClean, generateRawBuffer, generateCleanBuffer,
+  exportBatchToExcel, type FileParsedResult
+} from "@/lib/excelExport";
 import { parseExcelFile, generateDxf, downloadDxf, type ImportedExcelData } from "@/lib/excelToDxf";
+
+// ── File System Access API helpers ────────────────────────────────────────────
+
+const folderApiSupported = "showDirectoryPicker" in window;
+
+async function pickFolder(): Promise<FileSystemDirectoryHandle | null> {
+  if (!folderApiSupported) return null;
+  try {
+    return await (window as any).showDirectoryPicker({ mode: "readwrite" });
+  } catch {
+    return null;
+  }
+}
+
+async function readDxfFilesFromFolder(handle: FileSystemDirectoryHandle): Promise<File[]> {
+  const files: File[] = [];
+  for await (const entry of (handle as any).values()) {
+    if (entry.kind === "file" && entry.name.toLowerCase().endsWith(".dxf")) {
+      files.push(await entry.getFile());
+    }
+  }
+  return files.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function writeBufferToFolder(
+  handle: FileSystemDirectoryHandle,
+  fileName: string,
+  buffer: Uint8Array
+): Promise<void> {
+  const fh = await (handle as any).getFileHandle(fileName, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(buffer);
+  await writable.close();
+}
+
+async function writeTextToFolder(
+  handle: FileSystemDirectoryHandle,
+  fileName: string,
+  text: string
+): Promise<void> {
+  const fh = await (handle as any).getFileHandle(fileName, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(text);
+  await writable.close();
+}
 
 type Tab = "extract" | "excel-to-dxf";
 
@@ -78,6 +126,7 @@ interface FileEntry {
 function App() {
   const [showCover, setShowCover] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("extract");
+  const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
   if (showCover) return <CoverPage onEnter={() => setShowCover(false)} />;
 
@@ -193,7 +242,9 @@ function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
-        {activeTab === "extract" ? <BulkExtractor /> : <ExcelToDxf />}
+        {activeTab === "extract"
+          ? <BulkExtractor folderHandle={folderHandle} setFolderHandle={setFolderHandle} />
+          : <ExcelToDxf folderHandle={folderHandle} setFolderHandle={setFolderHandle} />}
       </main>
     </div>
   );
@@ -201,11 +252,17 @@ function App() {
 
 // ── Bulk DXF Extractor ────────────────────────────────────────────────────────
 
-function BulkExtractor() {
+interface BulkExtractorProps {
+  folderHandle: FileSystemDirectoryHandle | null;
+  setFolderHandle: (h: FileSystemDirectoryHandle | null) => void;
+}
+
+function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | File[]) => {
@@ -225,6 +282,34 @@ function BulkExtractor() {
     e.preventDefault();
     setIsDragging(false);
     addFiles(e.dataTransfer.files);
+  };
+
+  const handleSelectFolder = async () => {
+    const handle = await pickFolder();
+    if (!handle) return;
+    setFolderHandle(handle);
+    setEntries([]);
+    setResult(null);
+    setSaveStatus("idle");
+    const files = await readDxfFilesFromFolder(handle);
+    if (files.length === 0) {
+      alert("Folder mein koi DXF file nahi mili.");
+      return;
+    }
+    addFiles(files);
+  };
+
+  const handleSaveToFolder = async () => {
+    if (!folderHandle || !result) return;
+    setSaveStatus("saving");
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      await writeBufferToFolder(folderHandle, `RAW_BULK_EXPORT_${date}.xlsx`, generateRawBuffer(result));
+      await writeBufferToFolder(folderHandle, `CLEAN_SORTED_OUTPUT_${date}.xlsx`, generateCleanBuffer(result));
+      setSaveStatus("saved");
+    } catch (e) {
+      setSaveStatus("error");
+    }
   };
 
   const removeEntry = (name: string) => {
@@ -288,15 +373,33 @@ function BulkExtractor() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold mb-1">Bulk Engineering Data Extraction</h2>
           <p className="text-sm text-muted-foreground max-w-2xl">
-            Upload multiple DXF files. The tool extracts block attributes and classifies text into engineering fields
-            (TAG, Line_Number, Instrument_Type, Size, Spec, etc.), removes garbage, detects duplicates, and exports
-            two Excel files — a raw backup and a clean sorted dataset.
+            Upload multiple DXF files or select a folder directly. Extracts block attributes and classifies text
+            into engineering fields, removes garbage, detects duplicates, and exports two Excel files.
           </p>
         </div>
+        {/* Folder select button */}
+        {folderApiSupported && (
+          <button
+            onClick={handleSelectFolder}
+            disabled={isProcessing}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50"
+            style={{
+              background: folderHandle ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.1)",
+              border: folderHandle ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(99,102,241,0.4)",
+              color: folderHandle ? "#16a34a" : "#6366f1",
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            </svg>
+            {folderHandle ? `📂 ${(folderHandle as any).name}` : "Select Folder"}
+          </button>
+        )}
       </div>
 
       {/* DWG notice */}
@@ -306,36 +409,38 @@ function BulkExtractor() {
         </svg>
         <span>
           <strong>DWG files:</strong> Convert to DXF first using the free{" "}
-          <strong>ODA File Converter</strong> (opendesign.com) — it batch-converts entire folders in one click.
-          Then drop all DXF files here.
+          <strong>ODA File Converter</strong> (opendesign.com). Then use{" "}
+          <strong>Select Folder</strong> to auto-load all DXF files at once.
         </span>
       </div>
 
-      {/* Upload zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => !isProcessing && fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-          isProcessing ? "cursor-not-allowed opacity-60" :
-          isDragging ? "border-primary bg-primary/5 cursor-pointer" :
-          "border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer"
-        }`}
-      >
-        <input ref={fileRef} type="file" accept=".dxf" multiple className="hidden"
-          onChange={(e) => { if (e.target.files) addFiles(e.target.files); }} />
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-            <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
+      {/* Upload zone — only show if no folder is selected */}
+      {!folderHandle && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => !isProcessing && fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+            isProcessing ? "cursor-not-allowed opacity-60" :
+            isDragging ? "border-primary bg-primary/5 cursor-pointer" :
+            "border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer"
+          }`}
+        >
+          <input ref={fileRef} type="file" accept=".dxf" multiple className="hidden"
+            onChange={(e) => { if (e.target.files) addFiles(e.target.files); }} />
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <p className="font-medium text-sm">{hasFiles ? "Drop more DXF files to add" : "Drop DXF files here"}</p>
+            <p className="text-xs text-muted-foreground">or click to browse — multiple files supported</p>
+            <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">.dxf files only</span>
           </div>
-          <p className="font-medium text-sm">{hasFiles ? "Drop more DXF files to add" : "Drop DXF files here"}</p>
-          <p className="text-xs text-muted-foreground">or click to browse — multiple files supported</p>
-          <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">.dxf files only</span>
         </div>
-      </div>
+      )}
 
       {/* File list */}
       {hasFiles && (
@@ -438,6 +543,28 @@ function BulkExtractor() {
                   </svg>
                   CLEAN_SORTED_OUTPUT.xlsx
                 </button>
+                {folderHandle && (
+                  <button
+                    onClick={handleSaveToFolder}
+                    disabled={saveStatus === "saving"}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-60"
+                    style={{
+                      background: saveStatus === "saved" ? "rgba(34,197,94,0.15)" : "rgba(99,102,241,0.12)",
+                      border: saveStatus === "saved" ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(99,102,241,0.4)",
+                      color: saveStatus === "saved" ? "#15803d" : "#6366f1",
+                    }}
+                  >
+                    {saveStatus === "saving" ? (
+                      <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Saving...</>
+                    ) : saveStatus === "saved" ? (
+                      <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> Saved to Folder ✓</>
+                    ) : saveStatus === "error" ? (
+                      "❌ Save Failed — Retry"
+                    ) : (
+                      <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg> Save Both to Folder</>
+                    )}
+                  </button>
+                )}
               </>
             )}
 
@@ -610,17 +737,23 @@ function StatusIcon({ status }: { status: FileStatus }) {
 
 // ── Excel → DXF ───────────────────────────────────────────────────────────────
 
-function ExcelToDxf() {
+interface ExcelToDxfProps {
+  folderHandle: FileSystemDirectoryHandle | null;
+  setFolderHandle: (h: FileSystemDirectoryHandle | null) => void;
+}
+
+function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsed, setParsed] = useState<ImportedExcelData | null>(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
     if (!file.name.match(/\.xlsx?$/i)) { setError("Please upload a valid .xlsx or .xls file."); return; }
-    setError(""); setIsProcessing(true); setFileName(file.name);
+    setError(""); setIsProcessing(true); setFileName(file.name); setSaveStatus("idle");
     const reader = new FileReader();
     reader.onload = (e) => {
       const buffer = e.target?.result as ArrayBuffer;
@@ -643,7 +776,20 @@ function ExcelToDxf() {
     downloadDxf(dxf, fileName.replace(/\.xlsx?$/i, "") + "-output.dxf");
   };
 
-  const reset = () => { setParsed(null); setFileName(""); setError(""); if (fileRef.current) fileRef.current.value = ""; };
+  const handleSaveToFolder = async () => {
+    if (!folderHandle || !parsed) return;
+    setSaveStatus("saving");
+    try {
+      const dxf = generateDxf(parsed);
+      const outName = fileName.replace(/\.xlsx?$/i, "") + "-output.dxf";
+      await writeTextToFolder(folderHandle, outName, dxf);
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
+  };
+
+  const reset = () => { setParsed(null); setFileName(""); setError(""); setSaveStatus("idle"); if (fileRef.current) fileRef.current.value = ""; };
 
   return (
     <div className="space-y-6">
@@ -716,7 +862,7 @@ function ExcelToDxf() {
               {parsed.errors.map((e, i) => <div key={i}>{e}</div>)}
             </div>
           )}
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <button onClick={handleExport}
               className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -724,6 +870,26 @@ function ExcelToDxf() {
               </svg>
               Download DXF
             </button>
+            {folderHandle && (
+              <button
+                onClick={handleSaveToFolder}
+                disabled={saveStatus === "saving"}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-60"
+                style={{
+                  background: saveStatus === "saved" ? "rgba(34,197,94,0.15)" : "rgba(99,102,241,0.12)",
+                  border: saveStatus === "saved" ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(99,102,241,0.4)",
+                  color: saveStatus === "saved" ? "#15803d" : "#6366f1",
+                }}
+              >
+                {saveStatus === "saving" ? (
+                  <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Saving...</>
+                ) : saveStatus === "saved" ? (
+                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> Saved to 📂 {(folderHandle as any).name} ✓</>
+                ) : (
+                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg> Save DXF to 📂 {(folderHandle as any).name}</>
+                )}
+              </button>
+            )}
             <button onClick={reset}
               className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors">
               Upload Another
