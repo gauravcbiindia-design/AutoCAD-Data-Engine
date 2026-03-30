@@ -1,10 +1,14 @@
 import { useState, useRef } from "react";
-import { exportBatchToExcel, type FileParsedResult } from "@/lib/excelExport";
 import { parseDxf } from "@/lib/dxfParser";
+import {
+  extractEngineeringData,
+  mergeAndPostProcess,
+  type ExtractionResult,
+} from "@/lib/engineeringExtractor";
+import { exportRaw, exportClean, exportBatchToExcel, type FileParsedResult } from "@/lib/excelExport";
 import { parseExcelFile, generateDxf, downloadDxf, type ImportedExcelData } from "@/lib/excelToDxf";
 
-type Tab = "dxf-to-excel" | "excel-to-dxf";
-
+type Tab = "extract" | "excel-to-dxf";
 type FileStatus = "pending" | "processing" | "done" | "error";
 
 interface FileEntry {
@@ -12,34 +16,36 @@ interface FileEntry {
   status: FileStatus;
   result?: FileParsedResult;
   error?: string;
+  blockCount?: number;
+  textCount?: number;
 }
 
+// ── App shell ─────────────────────────────────────────────────────────────────
+
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("dxf-to-excel");
+  const [activeTab, setActiveTab] = useState<Tab>("extract");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
       <header className="border-b border-border bg-card px-6 py-4 shadow-sm">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary">
+        <div className="max-w-6xl mx-auto flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary shrink-0">
             <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold leading-tight">AutoCAD ↔ Excel Tool</h1>
-            <p className="text-xs text-muted-foreground">Extract blocks, attributes & text from DXF files</p>
+            <h1 className="text-lg font-bold leading-tight">AutoCAD Engineering Data Extractor</h1>
+            <p className="text-xs text-muted-foreground">Bulk extract blocks, attributes & classified text · Export to structured Excel</p>
           </div>
         </div>
       </header>
 
-      {/* Tabs */}
       <div className="border-b border-border bg-card">
-        <div className="max-w-5xl mx-auto px-6">
+        <div className="max-w-6xl mx-auto px-6">
           <nav className="flex gap-1 pt-2">
             {[
-              { id: "dxf-to-excel" as Tab, label: "DXF → Excel", icon: "⬇️" },
+              { id: "extract" as Tab, label: "Bulk DXF → Excel", icon: "⬇️" },
               { id: "excel-to-dxf" as Tab, label: "Excel → DXF", icon: "⬆️" },
             ].map((tab) => (
               <button
@@ -58,29 +64,32 @@ function App() {
         </div>
       </div>
 
-      {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        {activeTab === "dxf-to-excel" ? <DxfToExcel /> : <ExcelToDxf />}
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        {activeTab === "extract" ? <BulkExtractor /> : <ExcelToDxf />}
       </main>
     </div>
   );
 }
 
-// ─── DXF → Excel (Batch) ─────────────────────────────────────────────────────
+// ── Bulk DXF Extractor ────────────────────────────────────────────────────────
 
-function DxfToExcel() {
+function BulkExtractor() {
   const [isDragging, setIsDragging] = useState(false);
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState<ExtractionResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | File[]) => {
     const arr = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".dxf"));
     if (arr.length === 0) return;
-    const newEntries: FileEntry[] = arr.map((file) => ({ file, status: "pending" }));
+    setResult(null);
     setEntries((prev) => {
       const existing = new Set(prev.map((e) => e.file.name));
-      return [...prev, ...newEntries.filter((e) => !existing.has(e.file.name))];
+      const fresh: FileEntry[] = arr
+        .filter((f) => !existing.has(f.name))
+        .map((file) => ({ file, status: "pending" }));
+      return [...prev, ...fresh];
     });
   };
 
@@ -92,14 +101,16 @@ function DxfToExcel() {
 
   const removeEntry = (name: string) => {
     setEntries((prev) => prev.filter((e) => e.file.name !== name));
+    setResult(null);
   };
 
   const processAll = async () => {
     setIsProcessing(true);
+    setResult(null);
     const updated = [...entries];
+    const perFile: { dwgName: string; rawRows: any[]; cleanRows: any[] }[] = [];
 
     for (let i = 0; i < updated.length; i++) {
-      if (updated[i].status === "done") continue;
       updated[i] = { ...updated[i], status: "processing" };
       setEntries([...updated]);
 
@@ -108,18 +119,20 @@ function DxfToExcel() {
         reader.onload = (e) => {
           const content = e.target?.result as string;
           try {
-            const data = parseDxf(content);
+            const parsed = parseDxf(content);
+            const dwgName = updated[i].file.name.replace(/\.dxf$/i, "");
+            const { rawRows, cleanRows } = extractEngineeringData(dwgName, parsed);
+
             updated[i] = {
               ...updated[i],
               status: "done",
-              result: { fileName: updated[i].file.name, data },
+              result: { fileName: updated[i].file.name, data: parsed },
+              blockCount: parsed.blocks.length,
+              textCount: parsed.texts.length,
             };
+            perFile.push({ dwgName, rawRows, cleanRows });
           } catch (err: any) {
-            updated[i] = {
-              ...updated[i],
-              status: "error",
-              error: err.message,
-            };
+            updated[i] = { ...updated[i], status: "error", error: err.message };
           }
           setEntries([...updated]);
           resolve();
@@ -128,42 +141,49 @@ function DxfToExcel() {
       });
     }
 
+    const merged = mergeAndPostProcess(perFile);
+    setResult(merged);
     setIsProcessing(false);
-  };
-
-  const handleExport = () => {
-    const done = entries.filter((e) => e.status === "done" && e.result);
-    if (done.length === 0) return;
-    const results = done.map((e) => e.result!);
-    const name = done.length === 1
-      ? done[0].file.name.replace(/\.dxf$/i, "") + "-data.xlsx"
-      : `batch-${done.length}-files-data.xlsx`;
-    exportBatchToExcel(results, name);
   };
 
   const reset = () => {
     setEntries([]);
+    setResult(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
   const doneCount = entries.filter((e) => e.status === "done").length;
   const errorCount = entries.filter((e) => e.status === "error").length;
-  const totalBlocks = entries.filter((e) => e.result).reduce((s, e) => s + (e.result?.data.blocks.length ?? 0), 0);
-  const totalTexts = entries.filter((e) => e.result).reduce((s, e) => s + (e.result?.data.texts.length ?? 0), 0);
+  const pendingCount = entries.filter((e) => e.status === "pending").length;
   const hasFiles = entries.length > 0;
   const allDone = hasFiles && entries.every((e) => e.status === "done" || e.status === "error");
-  const pendingCount = entries.filter((e) => e.status === "pending").length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold mb-1">Batch Extract Data from DXF Files</h2>
-        <p className="text-sm text-muted-foreground">
-          Upload one or more AutoCAD DXF files. All block attributes and text annotations are extracted and combined into a single Excel file.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold mb-1">Bulk Engineering Data Extraction</h2>
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Upload multiple DXF files. The tool extracts block attributes and classifies text into engineering fields
+            (TAG, Line_Number, Instrument_Type, Size, Spec, etc.), removes garbage, detects duplicates, and exports
+            two Excel files — a raw backup and a clean sorted dataset.
+          </p>
+        </div>
       </div>
 
-      {/* Upload Zone */}
+      {/* DWG notice */}
+      <div className="flex items-start gap-3 p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
+        <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+        <span>
+          <strong>DWG files:</strong> Convert to DXF first using the free{" "}
+          <strong>ODA File Converter</strong> (opendesign.com) — it batch-converts entire folders in one click.
+          Then drop all DXF files here.
+        </span>
+      </div>
+
+      {/* Upload zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
@@ -175,40 +195,30 @@ function DxfToExcel() {
           "border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer"
         }`}
       >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".dxf"
-          multiple
-          className="hidden"
-          onChange={(e) => { if (e.target.files) addFiles(e.target.files); }}
-        />
+        <input ref={fileRef} type="file" accept=".dxf" multiple className="hidden"
+          onChange={(e) => { if (e.target.files) addFiles(e.target.files); }} />
         <div className="flex flex-col items-center gap-2">
           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
             <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
-          <p className="font-medium text-sm">
-            {hasFiles ? "Drop more DXF files to add them" : "Drop DXF files here"}
-          </p>
+          <p className="font-medium text-sm">{hasFiles ? "Drop more DXF files to add" : "Drop DXF files here"}</p>
           <p className="text-xs text-muted-foreground">or click to browse — multiple files supported</p>
-          <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">.dxf files only</span>
+          <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">.dxf files only</span>
         </div>
       </div>
 
-      {/* File List */}
+      {/* File list */}
       {hasFiles && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               Files ({entries.length})
             </h3>
-            {!allDone && (
-              <button
-                onClick={() => setEntries([])}
-                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-              >
+            {!isProcessing && (
+              <button onClick={() => { setEntries([]); setResult(null); }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors">
                 Clear all
               </button>
             )}
@@ -217,51 +227,23 @@ function DxfToExcel() {
           <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
             {entries.map((entry) => (
               <div key={entry.file.name} className="flex items-center gap-3 px-4 py-3 bg-card hover:bg-muted/20 transition-colors">
-                {/* Status icon */}
-                <div className="shrink-0">
-                  {entry.status === "pending" && (
-                    <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/40" />
-                  )}
-                  {entry.status === "processing" && (
-                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {entry.status === "done" && (
-                    <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                  {entry.status === "error" && (
-                    <svg className="w-5 h-5 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  )}
-                </div>
-
-                {/* File name */}
+                <StatusIcon status={entry.status} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{entry.file.name}</p>
-                  {entry.status === "done" && entry.result && (
+                  <p className="text-sm font-medium truncate">{entry.file.name.replace(/\.dxf$/i, "")}</p>
+                  {entry.status === "done" && (
                     <p className="text-xs text-muted-foreground">
-                      {entry.result.data.blocks.length} blocks · {entry.result.data.texts.length} text entities · {entry.result.data.layers.length} layers
+                      {entry.blockCount} blocks · {entry.textCount} text entities
                     </p>
                   )}
-                  {entry.status === "error" && (
-                    <p className="text-xs text-destructive">{entry.error}</p>
-                  )}
+                  {entry.status === "error" && <p className="text-xs text-destructive">{entry.error}</p>}
                   {entry.status === "pending" && (
-                    <p className="text-xs text-muted-foreground">{(entry.file.size / 1024).toFixed(0)} KB · Waiting...</p>
+                    <p className="text-xs text-muted-foreground">{(entry.file.size / 1024).toFixed(0)} KB · Waiting</p>
                   )}
-                  {entry.status === "processing" && (
-                    <p className="text-xs text-primary">Parsing...</p>
-                  )}
+                  {entry.status === "processing" && <p className="text-xs text-primary animate-pulse">Extracting...</p>}
                 </div>
-
-                {/* Remove button */}
                 {!isProcessing && (
-                  <button
-                    onClick={() => removeEntry(entry.file.name)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
-                  >
+                  <button onClick={() => removeEntry(entry.file.name)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -271,51 +253,34 @@ function DxfToExcel() {
             ))}
           </div>
 
-          {/* Progress bar when processing */}
+          {/* Progress bar */}
           {isProcessing && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Processing files...</span>
                 <span>{doneCount + errorCount} / {entries.length}</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-300"
-                  style={{ width: `${((doneCount + errorCount) / entries.length) * 100}%` }}
-                />
+                <div className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${((doneCount + errorCount) / entries.length) * 100}%` }} />
               </div>
             </div>
           )}
 
-          {/* Summary when done */}
-          {allDone && doneCount > 0 && (
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: "Files Processed", value: doneCount, icon: "📄" },
-                { label: "Total Blocks", value: totalBlocks, icon: "🔲" },
-                { label: "Total Text Entities", value: totalTexts, icon: "📝" },
-              ].map((stat) => (
-                <div key={stat.label} className="bg-card border border-border rounded-xl p-4 text-center">
-                  <div className="text-xl mb-1">{stat.icon}</div>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{stat.label}</div>
-                </div>
-              ))}
-            </div>
+          {/* Results panel */}
+          {result && allDone && (
+            <ResultsPanel result={result} doneCount={doneCount} />
           )}
 
-          {/* Action Buttons */}
+          {/* Action buttons */}
           <div className="flex gap-3 flex-wrap">
             {!allDone && pendingCount > 0 && (
-              <button
-                onClick={processAll}
-                disabled={isProcessing}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
+              <button onClick={processAll} disabled={isProcessing}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
                 {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Processing {pendingCount} file{pendingCount !== 1 ? "s" : ""}...
+                    Extracting {pendingCount} file{pendingCount !== 1 ? "s" : ""}...
                   </>
                 ) : (
                   <>
@@ -329,23 +294,28 @@ function DxfToExcel() {
               </button>
             )}
 
-            {doneCount > 0 && (
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export {doneCount} File{doneCount !== 1 ? "s" : ""} to Excel
-              </button>
+            {result && (
+              <>
+                <button onClick={() => exportRaw(result, `RAW_BULK_EXPORT_${new Date().toISOString().slice(0,10)}.xlsx`)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  RAW_BULK_EXPORT.xlsx
+                </button>
+                <button onClick={() => exportClean(result, `CLEAN_SORTED_OUTPUT_${new Date().toISOString().slice(0,10)}.xlsx`)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  CLEAN_SORTED_OUTPUT.xlsx
+                </button>
+              </>
             )}
 
-            {!isProcessing && (
-              <button
-                onClick={reset}
-                className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors"
-              >
+            {!isProcessing && hasFiles && (
+              <button onClick={reset}
+                className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors">
                 Clear All
               </button>
             )}
@@ -353,7 +323,7 @@ function DxfToExcel() {
 
           {errorCount > 0 && (
             <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
-              {errorCount} file{errorCount !== 1 ? "s" : ""} failed to parse. Check they are valid DXF files.
+              {errorCount} file{errorCount !== 1 ? "s" : ""} failed to parse. Ensure they are valid DXF files.
             </div>
           )}
         </div>
@@ -361,32 +331,16 @@ function DxfToExcel() {
 
       {/* Feature cards when empty */}
       {!hasFiles && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 mt-2">
           {[
-            {
-              title: "Batch Processing",
-              desc: "Upload dozens of DXF files at once. Each file is parsed and all data is combined into one Excel workbook.",
-              icon: "📦",
-            },
-            {
-              title: "Block Attributes",
-              desc: "All INSERT entities with attribute tags and values. Each tag becomes its own column, sorted by file and block name.",
-              icon: "🔲",
-            },
-            {
-              title: "Text & Annotations",
-              desc: "All TEXT and MTEXT entities with content, layer, position, and height — sorted by file and layer.",
-              icon: "📝",
-            },
-            {
-              title: "Summary Sheet",
-              desc: "An automatic summary sheet lists every file with counts of blocks, text entities, and layers found.",
-              icon: "📊",
-            },
+            { icon: "🏗️", title: "Engineering Column Structure", desc: "Outputs DWG, HANDLE, BLOCK, TAG, Line_Number, Instrument_Type, Size, Spec, Insulation, Tracing, Service, Status." },
+            { icon: "🧠", title: "Smart Text Classification", desc: "Automatically detects instrument tags, line numbers, sizes, specs and filters out notes, revisions, titles and garbage." },
+            { icon: "📄", title: "Two Output Files", desc: "RAW_BULK_EXPORT preserves everything untouched. CLEAN_SORTED_OUTPUT is deduplicated, classified, and sorted by DWG → Line → TAG." },
+            { icon: "🔍", title: "Duplicate Detection", desc: "Identifies and flags duplicate records across drawings. Duplicates appear in a separate sheet for review." },
           ].map((item) => (
             <div key={item.title} className="bg-card border border-border rounded-xl p-5">
               <div className="text-2xl mb-2">{item.icon}</div>
-              <h3 className="font-semibold mb-1">{item.title}</h3>
+              <h3 className="font-semibold mb-1 text-sm">{item.title}</h3>
               <p className="text-sm text-muted-foreground">{item.desc}</p>
             </div>
           ))}
@@ -396,7 +350,137 @@ function DxfToExcel() {
   );
 }
 
-// ─── Excel → DXF ─────────────────────────────────────────────────────────────
+// ── Results Panel ─────────────────────────────────────────────────────────────
+
+function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCount: number }) {
+  const { stats, cleanRows } = result;
+
+  // Instrument type summary
+  const instrMap = new Map<string, number>();
+  cleanRows.forEach((r) => {
+    if (r.Instrument_Type) instrMap.set(r.Instrument_Type, (instrMap.get(r.Instrument_Type) || 0) + 1);
+  });
+  const topInstrs = [...instrMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  // Preview first 8 clean rows
+  const preview = cleanRows.slice(0, 8);
+
+  return (
+    <div className="space-y-5 border border-border rounded-xl p-5 bg-card">
+      <h3 className="font-semibold text-base">Extraction Results</h3>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Drawings", value: doneCount, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Raw Entities", value: stats.totalEntities, color: "text-gray-700", bg: "bg-gray-50" },
+          { label: "Block Rows", value: stats.blockRows, color: "text-purple-600", bg: "bg-purple-50" },
+          { label: "Text Rows", value: stats.textRows, color: "text-indigo-600", bg: "bg-indigo-50" },
+          { label: "Clean Rows", value: cleanRows.length, color: "text-green-600", bg: "bg-green-50" },
+          { label: "Filtered Out", value: stats.filteredOut, color: "text-orange-600", bg: "bg-orange-50" },
+          { label: "Duplicates", value: stats.duplicates, color: stats.duplicates > 0 ? "text-red-600" : "text-gray-400", bg: stats.duplicates > 0 ? "bg-red-50" : "bg-gray-50" },
+        ].map((s) => (
+          <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
+            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Instrument types found */}
+      {topInstrs.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Instrument Types Detected
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {topInstrs.map(([type, count]) => (
+              <span key={type} className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                {type} <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[10px]">{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clean data preview */}
+      {preview.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            CLEAN_SORTED_OUTPUT Preview (first {preview.length} rows)
+          </h4>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50">
+                <tr>
+                  {["DWG", "HANDLE", "BLOCK", "TAG", "Line_Number", "Instrument_Type", "Size", "Spec", "Service", "Status", "Detected_Type"].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {preview.map((row, i) => (
+                  <tr key={i} className={`hover:bg-muted/20 transition-colors ${row.Duplicate === "YES" ? "bg-red-50" : ""}`}>
+                    <td className="px-3 py-2 font-medium max-w-[120px] truncate">{row.DWG}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground">{row.HANDLE}</td>
+                    <td className="px-3 py-2 font-mono">{row.BLOCK}</td>
+                    <td className="px-3 py-2 font-semibold text-primary">{row.TAG}</td>
+                    <td className="px-3 py-2">{row.Line_Number}</td>
+                    <td className="px-3 py-2 max-w-[150px] truncate">{row.Instrument_Type}</td>
+                    <td className="px-3 py-2">{row.Size}</td>
+                    <td className="px-3 py-2">{row.Spec}</td>
+                    <td className="px-3 py-2">{row.Service}</td>
+                    <td className="px-3 py-2">
+                      {row.Status && (
+                        <span className="px-1.5 py-0.5 bg-muted rounded text-xs">{row.Status}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        row.Detected_Type === "BLOCK_ATTRIB" ? "bg-purple-100 text-purple-700" :
+                        row.Detected_Type === "INSTRUMENT_TAG" ? "bg-blue-100 text-blue-700" :
+                        row.Detected_Type === "LINE_NUMBER" ? "bg-green-100 text-green-700" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{row.Detected_Type}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {cleanRows.length > 8 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border">
+                Showing 8 of {cleanRows.length} clean rows — full data in downloaded Excel
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="text-xs text-muted-foreground border-t border-border pt-3">
+        ✅ HANDLE integrity preserved · Data sorted by DWG → Line_Number → Instrument_Type → TAG → HANDLE · Duplicates flagged
+      </div>
+    </div>
+  );
+}
+
+// ── Status icon ───────────────────────────────────────────────────────────────
+
+function StatusIcon({ status }: { status: FileStatus }) {
+  if (status === "pending") return <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0" />;
+  if (status === "processing") return <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />;
+  if (status === "done") return (
+    <svg className="w-5 h-5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+    </svg>
+  );
+  return (
+    <svg className="w-5 h-5 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+// ── Excel → DXF ───────────────────────────────────────────────────────────────
 
 function ExcelToDxf() {
   const [isDragging, setIsDragging] = useState(false);
@@ -407,30 +491,20 @@ function ExcelToDxf() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".xlsx") && !file.name.toLowerCase().endsWith(".xls")) {
-      setError("Please upload a valid .xlsx or .xls file.");
-      return;
-    }
-    setError("");
-    setIsProcessing(true);
-    setFileName(file.name);
+    if (!file.name.match(/\.xlsx?$/i)) { setError("Please upload a valid .xlsx or .xls file."); return; }
+    setError(""); setIsProcessing(true); setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (e) => {
       const buffer = e.target?.result as ArrayBuffer;
-      try {
-        const data = parseExcelFile(buffer);
-        setParsed(data);
-      } catch (err: any) {
-        setError("Failed to parse Excel file: " + err.message);
-      }
+      try { setParsed(parseExcelFile(buffer)); }
+      catch (err: any) { setError("Failed to parse Excel file: " + err.message); }
       setIsProcessing(false);
     };
     reader.readAsArrayBuffer(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
+    e.preventDefault(); setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) processFile(file);
   };
@@ -438,36 +512,25 @@ function ExcelToDxf() {
   const handleExport = () => {
     if (!parsed) return;
     const dxf = generateDxf(parsed);
-    const base = fileName.replace(/\.(xlsx|xls)$/i, "");
-    downloadDxf(dxf, `${base}-output.dxf`);
+    downloadDxf(dxf, fileName.replace(/\.xlsx?$/i, "") + "-output.dxf");
   };
 
-  const reset = () => {
-    setParsed(null);
-    setFileName("");
-    setError("");
-    if (fileRef.current) fileRef.current.value = "";
-  };
+  const reset = () => { setParsed(null); setFileName(""); setError(""); if (fileRef.current) fileRef.current.value = ""; };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold mb-1">Generate DXF from Excel</h2>
         <p className="text-sm text-muted-foreground">
-          Upload an Excel file (exported from this tool or matching the format) to generate a DXF file with block insertions and text.
+          Upload an Excel file (from the DXF → Excel tab) to generate a DXF file with block insertions and text entities.
         </p>
       </div>
 
-      {/* Format Guide */}
-      {!parsed && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-          <strong>Expected Excel format:</strong> The file should have sheets named{" "}
-          <span className="font-mono bg-blue-100 px-1 rounded">Blocks &amp; Attributes</span> and/or{" "}
-          <span className="font-mono bg-blue-100 px-1 rounded">Text &amp; Annotations</span> — exactly as exported by the DXF → Excel tab.
-        </div>
-      )}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        Expected sheets: <span className="font-mono bg-blue-100 px-1 rounded">Blocks & Attributes</span> and/or{" "}
+        <span className="font-mono bg-blue-100 px-1 rounded">Text & Annotations</span>
+      </div>
 
-      {/* Upload Zone */}
       {!parsed && (
         <div
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -478,17 +541,12 @@ function ExcelToDxf() {
             isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/30"
           }`}
         >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }}
-          />
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
           {isProcessing ? (
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">Parsing Excel file...</p>
+              <p className="text-sm text-muted-foreground">Parsing Excel...</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
@@ -501,78 +559,46 @@ function ExcelToDxf() {
                 <p className="font-medium">Drop your Excel file here</p>
                 <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
               </div>
-              <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">.xlsx / .xls files only</span>
+              <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">.xlsx / .xls only</span>
             </div>
           )}
         </div>
       )}
 
       {error && (
-        <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-          <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-          </svg>
-          {error}
-        </div>
+        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">{error}</div>
       )}
 
       {parsed && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             {[
               { label: "Block Insertions", value: parsed.blocks.length, icon: "🔲" },
               { label: "Text Entities", value: parsed.texts.length, icon: "📝" },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-card border border-border rounded-xl p-5 text-center">
-                <div className="text-2xl mb-1">{stat.icon}</div>
-                <div className="text-3xl font-bold">{stat.value}</div>
-                <div className="text-sm text-muted-foreground mt-1">{stat.label}</div>
+            ].map((s) => (
+              <div key={s.label} className="bg-card border border-border rounded-xl p-5 text-center">
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <div className="text-3xl font-bold">{s.value}</div>
+                <div className="text-sm text-muted-foreground mt-1">{s.label}</div>
               </div>
             ))}
           </div>
-
           {parsed.errors.length > 0 && (
-            <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm space-y-1">
-              <strong>Warnings:</strong>
-              <ul className="list-disc pl-4">
-                {parsed.errors.map((e, i) => <li key={i}>{e}</li>)}
-              </ul>
+            <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+              {parsed.errors.map((e, i) => <div key={i}>{e}</div>)}
             </div>
           )}
-
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h3 className="font-semibold mb-3">DXF Output Preview</h3>
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
-                {parsed.blocks.length} INSERT entities will be written
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                {parsed.texts.length} TEXT/MTEXT entities will be written
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-purple-500" />
-                AutoCAD 2000 format (AC1015) — compatible with most CAD software
-              </div>
-            </div>
-          </div>
-
           <div className="flex gap-3">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity"
-            >
+            <button onClick={handleExport}
+              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Download DXF File
+              Download DXF
             </button>
-            <button
-              onClick={reset}
-              className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors"
-            >
-              Upload Another File
+            <button onClick={reset}
+              className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors">
+              Upload Another
             </button>
           </div>
         </div>
