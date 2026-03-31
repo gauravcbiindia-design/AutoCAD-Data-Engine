@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/cad-data-engine-deck/"
+title = "CAD Data Engine — Presentation"
+version = "1.0.0"
+id = "artifacts/cad-data-engine-deck"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/cad-data-engine-deck/" ]
+localPort = 25624
+
+[services.development]
+run = "pnpm --filter @workspace/cad-data-engine-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cad-data-engine-deck", "run", "build" ]
+publicDir = "artifacts/cad-data-engine-deck/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25624"
+BASE_PATH = "/cad-data-engine-deck/"

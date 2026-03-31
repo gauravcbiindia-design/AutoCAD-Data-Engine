@@ -1,0 +1,58 @@
+[
+  {
+    "id": "9f61f7eb-1ace-47f3-b8d5-9d5413e1282a",
+    "position": 1,
+    "filepath": "src/pages/slides/TitleSlide.tsx",
+    "title": "Title — CAD Data Engine",
+    "description": "Hero title slide with app name, subtitle and author.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "2b3e4f5a-6c7d-8e9f-0a1b-2c3d4e5f6a7b",
+    "position": 2,
+    "filepath": "src/pages/slides/TheProblem.tsx",
+    "title": "The Challenge",
+    "description": "Three key pain points of manual DXF data extraction.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+    "position": 3,
+    "filepath": "src/pages/slides/TheSolution.tsx",
+    "title": "Introducing CAD Data Engine",
+    "description": "Solution overview — Batch, Classify, Export.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+    "position": 4,
+    "filepath": "src/pages/slides/FiveCategories.tsx",
+    "title": "5 Engineering Categories",
+    "description": "LINE, INSTRUMENT, EQUIPMENT, OPC, TEXT_REVIEW — auto-classified.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
+    "position": 5,
+    "filepath": "src/pages/slides/ExcelOutput.tsx",
+    "title": "Two Structured Excel Workbooks",
+    "description": "ENGINEER_DATA.xlsx and RAW_EXPORT.xlsx explained.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
+    "position": 6,
+    "filepath": "src/pages/slides/Workflow.tsx",
+    "title": "Three-Step Workflow",
+    "description": "Convert — Drop — Download. Simple end-to-end workflow.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "position": 7,
+    "filepath": "src/pages/slides/Closing.tsx",
+    "title": "Closing — Gaurav Bharti",
+    "description": "Closing slide with branding, tagline, and copyright.",
+    "speakerNotes": ""
+  }
+]
