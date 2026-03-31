@@ -86,26 +86,25 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-600 ${
         leaving ? "opacity-0" : visible ? "opacity-100" : "opacity-0"
       }`}
-      style={{ background: "#0a0a0a" }}
+      style={{ background: "#e8e8e8" }}
     >
+      {/* Full image — contain so nothing is cropped */}
       <img
-        src="/cover.png"
-        alt="CAD Data Engine"
-        className="w-full h-full object-cover absolute inset-0"
-        style={{ objectPosition: "center" }}
+        src="/cover2.png"
+        alt="AutoCAD Data Engine — Gaurav Bharti"
+        className="absolute inset-0 w-full h-full"
+        style={{ objectFit: "contain", objectPosition: "center" }}
       />
-      <div className="absolute bottom-6 left-6 z-10 text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
-        © {new Date().getFullYear()} G. Bharti · All rights reserved
-      </div>
 
+      {/* Launch button — bottom centre, above image */}
       <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center">
         <button
           onClick={handleEnter}
-          className="group flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
+          className="group flex items-center gap-2 px-7 py-2.5 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
           style={{
-            background: "linear-gradient(135deg, #c8102e 0%, #8b0000 100%)",
+            background: "linear-gradient(135deg, #0077b6 0%, #023e8a 100%)",
             color: "#fff",
-            boxShadow: "0 0 32px rgba(200,16,46,0.5), 0 4px 24px rgba(0,0,0,0.6)",
+            boxShadow: "0 0 28px rgba(0,119,182,0.5), 0 4px 20px rgba(0,0,0,0.25)",
           }}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
