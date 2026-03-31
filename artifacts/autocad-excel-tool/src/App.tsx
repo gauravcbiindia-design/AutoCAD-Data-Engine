@@ -86,7 +86,7 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-600 ${
         leaving ? "opacity-0" : visible ? "opacity-100" : "opacity-0"
       }`}
-      style={{ background: "#dde1e5" }}
+      style={{ background: "hsl(216 28% 10%)" }}
     >
       {/* Image — full width, natural aspect ratio, no crop on any screen */}
       <div className="w-full flex items-center justify-center px-2 pt-4 pb-3">
@@ -639,12 +639,12 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
 // ── Category badge colours ─────────────────────────────────────────────────────
 
 const CAT_STYLE: Record<string, { bg: string; text: string }> = {
-  LINE:         { bg: "bg-green-100",  text: "text-green-800" },
-  INSTRUMENT:   { bg: "bg-blue-100",   text: "text-blue-800" },
-  EQUIPMENT:    { bg: "bg-purple-100", text: "text-purple-800" },
-  OPC:          { bg: "bg-yellow-100", text: "text-yellow-800" },
-  TEXT_REVIEW:  { bg: "bg-orange-100", text: "text-orange-700" },
-  DRAWING_META: { bg: "bg-gray-100",   text: "text-gray-600" },
+  LINE:         { bg: "bg-green-900/40",  text: "text-green-300" },
+  INSTRUMENT:   { bg: "bg-blue-900/40",   text: "text-blue-300" },
+  EQUIPMENT:    { bg: "bg-purple-900/40", text: "text-purple-300" },
+  OPC:          { bg: "bg-yellow-900/30", text: "text-yellow-300" },
+  TEXT_REVIEW:  { bg: "bg-orange-900/30", text: "text-orange-300" },
+  DRAWING_META: { bg: "bg-slate-700/50",  text: "text-slate-300" },
 };
 
 // ── Results Panel ─────────────────────────────────────────────────────────────
@@ -669,14 +669,14 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
       {/* Category stats grid */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Drawings",    value: doneCount,              color: "text-blue-600",   bg: "bg-blue-50" },
-          { label: "Lines",       value: stats.linesFound,       color: "text-green-700",  bg: "bg-green-50" },
-          { label: "Instruments", value: stats.instrumentsFound, color: "text-blue-700",   bg: "bg-blue-50" },
-          { label: "Equipment",   value: stats.equipmentFound,   color: "text-purple-700", bg: "bg-purple-50" },
-          { label: "OPC",         value: stats.opcFound,         color: "text-yellow-700", bg: "bg-yellow-50" },
-          { label: "Text Review", value: stats.textReview,       color: "text-orange-600", bg: "bg-orange-50" },
-          { label: "Line Tokens", value: lineTokens.length,      color: "text-teal-700",   bg: "bg-teal-50" },
-          { label: "Raw Entities",value: stats.totalEntities,    color: "text-gray-600",   bg: "bg-gray-50" },
+          { label: "Drawings",    value: doneCount,              color: "text-blue-300",   bg: "bg-blue-900/30" },
+          { label: "Lines",       value: stats.linesFound,       color: "text-green-300",  bg: "bg-green-900/30" },
+          { label: "Instruments", value: stats.instrumentsFound, color: "text-blue-300",   bg: "bg-blue-900/30" },
+          { label: "Equipment",   value: stats.equipmentFound,   color: "text-purple-300", bg: "bg-purple-900/30" },
+          { label: "OPC",         value: stats.opcFound,         color: "text-yellow-300", bg: "bg-yellow-900/25" },
+          { label: "Text Review", value: stats.textReview,       color: "text-orange-300", bg: "bg-orange-900/25" },
+          { label: "Line Tokens", value: lineTokens.length,      color: "text-teal-300",   bg: "bg-teal-900/30" },
+          { label: "Raw Entities",value: stats.totalEntities,    color: "text-slate-300",  bg: "bg-slate-700/40" },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
