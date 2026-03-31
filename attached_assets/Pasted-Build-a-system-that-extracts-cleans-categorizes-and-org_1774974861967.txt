@@ -1,0 +1,270 @@
+Build a system that extracts, cleans, categorizes, and organizes AutoCAD drawing data into a structured, engineer-friendly Excel output.
+
+---
+
+## OBJECTIVE
+
+Extract ALL visible engineering data from AutoCAD drawings and convert it into a clean, categorized, normalized dataset.
+
+The system must support bulk processing of multiple drawings and generate drawing-wise organized results.
+
+---
+
+## CORE PRINCIPLE
+
+If engineers can see it in the drawing, it must be available in the output.
+
+Do not limit extraction to attributes only.
+
+Include:
+
+* Block attributes
+* TEXT
+* MTEXT
+* Broken block visible text
+* Free visible drawing text
+* Instrument visible text
+* Connector / OPC arrow text
+* Line number visible text
+
+---
+
+## DATA NORMALIZATION RULE
+
+Different sources may contain the same engineering meaning.
+
+Examples:
+
+* `#`
+* `LINE NO`
+* `LINE.NO`
+* visible line text
+
+All must map into one final column:
+`Line_Number`
+
+Core rule:
+One engineering meaning = one final column
+
+Do not force engineers to filter across multiple columns for the same type of data.
+
+---
+
+## FINAL CATEGORIES
+
+All data must be classified into:
+
+1. LINE
+2. INSTRUMENT
+3. EQUIPMENT
+4. OPC (connector / arrow)
+5. TEXT_REVIEW
+6. DRAWING_META (optional separate sheet)
+
+---
+
+## LINE CATEGORY RULE
+
+1. Do NOT split line number into size/spec/etc.
+
+2. Keep full visible line text in:
+   `Line_Number`
+
+3. Do NOT create multiple columns for line number components in main sheet.
+
+4. Create a separate helper table for token-based filtering:
+
+Sheet: LINE_TOKENS
+
+Columns:
+
+* DWG
+* Handle
+* Line_Number
+* Token
+
+5. Token rules:
+
+* Split using separators like dash (-), space, etc.
+* Do NOT assign meaning (size/spec/etc.)
+* Treat tokens as neutral values
+
+Purpose:
+Engineers should be able to filter:
+
+* all 6" lines
+* all A1A lines
+* all HI lines
+
+---
+
+## INSTRUMENT CATEGORY RULE
+
+Detect instrument data from:
+
+* TOP/BOTTOM attributes
+* Broken blocks
+* Visible stacked text
+* Nearby text pairs
+
+Example:
+PI
+2101
+
+Convert into one row:
+
+* Category = INSTRUMENT
+* Instrument_Type = PI / TI / TT / PT / PSV / HV / etc.
+* Instrument_Tag = 2101 / IA100 / etc.
+* Instrument_Display = PI-2101
+
+Rules:
+
+* Do NOT show raw TOP/BOTTOM columns in main sheet
+* Must work even if block is broken
+
+---
+
+## EQUIPMENT CATEGORY RULE
+
+Merge visible equipment data:
+
+Sources:
+
+* EQLINE1
+* EQNAME fields
+* EQDES fields
+
+Final columns:
+
+* Equipment_Tag
+* Equipment_Name
+* Description
+
+---
+
+## OPC (CONNECTOR) CATEGORY RULE
+
+Detect off-page connectors / arrows.
+
+If visible text contains:
+
+* FROM
+* TO
+* continuation references
+
+Convert into structured row:
+
+* Category = OPC
+* OPC_From
+* OPC_To
+* OPC_Display
+* Connector_Tag (if available)
+
+---
+
+## TEXT_REVIEW CATEGORY
+
+Any visible text that:
+
+* cannot be clearly categorized
+* is partial / unclear
+* is free text
+
+Put into:
+Category = TEXT_REVIEW
+
+---
+
+## DRAWING META
+
+Optional separate sheet for:
+
+* title
+* drawing number
+* revision
+* project info
+
+---
+
+## FINAL OUTPUT STRUCTURE
+
+Sheet 1: ENGINEER_VISIBLE_DATA
+
+* DWG
+* Handle
+* Category
+* Line_Number
+* Instrument_Type
+* Instrument_Tag
+* Instrument_Display
+* Equipment_Tag
+* Equipment_Name
+* Description
+* OPC_From
+* OPC_To
+* OPC_Display
+* Visible_Text
+* Source_Block
+* Source_Field
+* Status
+* Remarks
+
+Sheet 2: LINE_TOKENS
+
+* DWG
+* Handle
+* Line_Number
+* Token
+
+Sheet 3: RAW_EXPORT
+
+* Complete untouched extracted data
+
+Sheet 4: TEXT_REVIEW
+
+* unclear / unmatched data
+
+Sheet 5 (optional): DRAWING_META
+
+---
+
+## SORTING RULE
+
+Sort only row-wise:
+
+1. DWG
+2. Category
+3. Line_Number / Instrument_Tag
+4. Handle
+
+---
+
+## WORKFLOW
+
+1. Bulk drawing processing
+2. Extract all visible data
+3. Normalize and categorize
+4. Generate:
+
+   * RAW_EXPORT
+   * ENGINEER_VISIBLE_DATA
+   * LINE_TOKENS
+   * TEXT_REVIEW
+5. Engineer reviews data
+6. Use cleaned data for further workflow
+
+---
+
+## FINAL GOAL
+
+Create a system where:
+
+* Engineers see only clean, meaningful, visible drawing data
+* Same data type is never split across multiple columns
+* Line numbers are preserved safely and still filterable using tokens
+* Instruments are correctly paired even if blocks are broken
+* OPC connectors are structured in To/From format
+* Raw data is always preserved for safety
+
+This must behave like a real engineering data system, not a generic CSV export.
