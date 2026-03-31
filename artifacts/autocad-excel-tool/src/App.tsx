@@ -92,7 +92,7 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
       <div className="w-full flex items-center justify-center px-2 pt-4 pb-3">
         <img
           src="/cover2.png"
-          alt="AutoCAD Data Engine — Gaurav Bharti"
+          alt="CAD Data Engine — Gaurav Bharti"
           className="w-full max-w-5xl"
           style={{
             maxHeight: "calc(100svh - 64px)",
