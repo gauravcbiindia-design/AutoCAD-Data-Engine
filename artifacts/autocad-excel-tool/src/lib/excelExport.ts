@@ -1,8 +1,9 @@
 /**
  * @copyright © 2026 G. Bharti. All rights reserved.
  * @description CAD Data Engine — Excel Export Module
- * Generates RAW_BULK_EXPORT and CLEAN_SORTED_OUTPUT Excel workbooks
- * from extracted engineering data. Supports folder save-back via buffer API.
+ * Generates ENGINEER_DATA and RAW_EXPORT Excel workbooks from extracted data.
+ * Sheet structure: ENGINEER_VISIBLE_DATA, LINE_TOKENS, TEXT_REVIEW, DRAWING_META,
+ * RAW_EXPORT, Export_Stats.
  * Proprietary software. Unauthorised use strictly prohibited.
  */
 
@@ -15,126 +16,139 @@ export interface FileParsedResult {
   data: ParsedDxfData;
 }
 
-// ── Engineering bulk export (two workbooks) ────────────────────────────────────
+// ── Column order definitions ───────────────────────────────────────────────────
 
-export function exportEngineeringExcel(result: ExtractionResult, baseName: string = "autocad-bulk") {
-  const timestamp = new Date().toISOString().slice(0, 10);
+const ENGINEER_COLUMNS = [
+  "DWG", "Handle", "Category",
+  "Line_Number",
+  "Instrument_Type", "Instrument_Tag", "Instrument_Display",
+  "Equipment_Tag", "Equipment_Name", "Description",
+  "OPC_From", "OPC_To", "OPC_Display",
+  "Visible_Text", "Source_Block", "Source_Field",
+  "Status", "Remarks",
+];
 
-  exportRaw(result, `RAW_BULK_EXPORT_${timestamp}.xlsx`);
-  exportClean(result, `CLEAN_SORTED_OUTPUT_${timestamp}.xlsx`);
+const TOKEN_COLUMNS = ["DWG", "Handle", "Line_Number", "Token"];
+
+const RAW_COLUMNS = [
+  "DWG", "HANDLE", "Entity_Type", "BLOCK", "Layer",
+  "X", "Y", "Attribute_Tag", "Attribute_Value", "Raw_Text", "Detected_Type",
+];
+
+// ── Sheet builder helper ───────────────────────────────────────────────────────
+
+function makeSheet<T extends object>(
+  data: T[],
+  columns: string[],
+  emptyNote: string
+): XLSX.WorkSheet {
+  if (data.length === 0) {
+    const ws = XLSX.utils.json_to_sheet([{ Note: emptyNote }]);
+    autoSizeColumns(ws);
+    return ws;
+  }
+  // Enforce column order — only include defined columns
+  const ordered = data.map((row) => {
+    const out: Record<string, unknown> = {};
+    columns.forEach((col) => { out[col] = (row as any)[col] ?? ""; });
+    return out;
+  });
+  const ws = XLSX.utils.json_to_sheet(ordered, { header: columns });
+  autoSizeColumns(ws);
+  return ws;
+}
+
+// ── ENGINEER_DATA workbook (main output) ──────────────────────────────────────
+
+export function buildEngineerWorkbook(result: ExtractionResult): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — ENGINEER_VISIBLE_DATA
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(result.engineerRows, ENGINEER_COLUMNS, "No engineer-visible data extracted."),
+    "ENGINEER_VISIBLE_DATA"
+  );
+
+  // Sheet 2 — LINE_TOKENS
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(result.lineTokens, TOKEN_COLUMNS, "No line numbers found."),
+    "LINE_TOKENS"
+  );
+
+  // Sheet 3 — TEXT_REVIEW
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(result.textReviewRows, ENGINEER_COLUMNS, "No text review items."),
+    "TEXT_REVIEW"
+  );
+
+  // Sheet 4 — DRAWING_META
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(result.drawingMetaRows, ENGINEER_COLUMNS, "No drawing metadata found."),
+    "DRAWING_META"
+  );
+
+  return wb;
+}
+
+// ── RAW_EXPORT workbook ────────────────────────────────────────────────────────
+
+export function buildRawWorkbook(result: ExtractionResult): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — RAW_EXPORT
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(result.rawRows, RAW_COLUMNS, "No raw data."),
+    "RAW_EXPORT"
+  );
+
+  // Sheet 2 — Export_Stats
+  const statsRows = [
+    { Metric: "Total Raw Entities",   Value: result.stats.totalEntities },
+    { Metric: "Block / Attribute Rows", Value: result.stats.blockRows },
+    { Metric: "Text / Annotation Rows", Value: result.stats.textRows },
+    { Metric: "Lines Found",           Value: result.stats.linesFound },
+    { Metric: "Instruments Found",     Value: result.stats.instrumentsFound },
+    { Metric: "Equipment Found",       Value: result.stats.equipmentFound },
+    { Metric: "OPC Connectors Found",  Value: result.stats.opcFound },
+    { Metric: "Text Review Items",     Value: result.stats.textReview },
+    { Metric: "Line Tokens Generated", Value: result.lineTokens.length },
+    { Metric: "Generated",             Value: new Date().toLocaleString() },
+  ];
+  const wsStats = XLSX.utils.json_to_sheet(statsRows);
+  autoSizeColumns(wsStats);
+  XLSX.utils.book_append_sheet(wb, wsStats, "Export_Stats");
+
+  return wb;
+}
+
+// ── Buffer generators (for folder save-back) ──────────────────────────────────
+
+export function generateEngineerBuffer(result: ExtractionResult): Uint8Array {
+  return XLSX.write(buildEngineerWorkbook(result), { bookType: "xlsx", type: "array" });
 }
 
 export function generateRawBuffer(result: ExtractionResult): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(result.rawRows.length ? result.rawRows : [{ Note: "No data" }]);
-  autoSizeColumns(ws);
-  XLSX.utils.book_append_sheet(wb, ws, "RAW_BULK_EXPORT");
-  const statsRows = [
-    { Metric: "Total Raw Entities", Value: result.stats.totalEntities },
-    { Metric: "Block / Attribute Rows", Value: result.stats.blockRows },
-    { Metric: "Text / Annotation Rows", Value: result.stats.textRows },
-    { Metric: "Filtered Out (garbage/notes/titles)", Value: result.stats.filteredOut },
-    { Metric: "Duplicates Detected", Value: result.stats.duplicates },
-    { Metric: "Generated", Value: new Date().toLocaleString() },
-  ];
-  const wsStats = XLSX.utils.json_to_sheet(statsRows);
-  autoSizeColumns(wsStats);
-  XLSX.utils.book_append_sheet(wb, wsStats, "Export_Stats");
-  return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  return XLSX.write(buildRawWorkbook(result), { bookType: "xlsx", type: "array" });
 }
 
-export function generateCleanBuffer(result: ExtractionResult): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const cleanData = result.cleanRows.length ? result.cleanRows : [{ Note: "No clean data extracted." }];
-  const wsClean = XLSX.utils.json_to_sheet(cleanData);
-  autoSizeColumns(wsClean);
-  XLSX.utils.book_append_sheet(wb, wsClean, "CLEAN_SORTED_OUTPUT");
-  const dupes = result.cleanRows.filter((r) => r.Duplicate === "YES");
-  const wsDupes = XLSX.utils.json_to_sheet(dupes.length ? dupes : [{ Note: "No duplicates found." }]);
-  autoSizeColumns(wsDupes);
-  XLSX.utils.book_append_sheet(wb, wsDupes, "Duplicates");
-  const instrMap = new Map<string, { count: number; dwgs: Set<string> }>();
-  result.cleanRows.forEach((r) => {
-    if (r.Instrument_Type) {
-      if (!instrMap.has(r.Instrument_Type)) instrMap.set(r.Instrument_Type, { count: 0, dwgs: new Set() });
-      const entry = instrMap.get(r.Instrument_Type)!;
-      entry.count++;
-      entry.dwgs.add(r.DWG);
-    }
-  });
-  const instrRows = [...instrMap.entries()]
-    .map(([type, v]) => ({ Instrument_Type: type, Count: v.count, Drawings: [...v.dwgs].join(", ") }))
-    .sort((a, b) => b.Count - a.Count);
-  const wsInstr = XLSX.utils.json_to_sheet(instrRows.length ? instrRows : [{ Note: "No instruments found." }]);
-  autoSizeColumns(wsInstr);
-  XLSX.utils.book_append_sheet(wb, wsInstr, "Instrument_Summary");
-  return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+// ── Browser download functions ─────────────────────────────────────────────────
+
+export function exportEngineerData(result: ExtractionResult) {
+  const date = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(buildEngineerWorkbook(result), `ENGINEER_DATA_${date}.xlsx`);
 }
 
-export function exportRaw(result: ExtractionResult, filename: string) {
-  const wb = XLSX.utils.book_new();
-
-  // RAW DATA sheet
-  const ws = XLSX.utils.json_to_sheet(result.rawRows.length ? result.rawRows : [{ Note: "No data" }]);
-  autoSizeColumns(ws);
-  XLSX.utils.book_append_sheet(wb, ws, "RAW_BULK_EXPORT");
-
-  // Stats sheet
-  const statsRows = [
-    { Metric: "Total Raw Entities", Value: result.stats.totalEntities },
-    { Metric: "Block / Attribute Rows", Value: result.stats.blockRows },
-    { Metric: "Text / Annotation Rows", Value: result.stats.textRows },
-    { Metric: "Filtered Out (garbage/notes/titles)", Value: result.stats.filteredOut },
-    { Metric: "Duplicates Detected", Value: result.stats.duplicates },
-    { Metric: "Generated", Value: new Date().toLocaleString() },
-  ];
-  const wsStats = XLSX.utils.json_to_sheet(statsRows);
-  autoSizeColumns(wsStats);
-  XLSX.utils.book_append_sheet(wb, wsStats, "Export_Stats");
-
-  XLSX.writeFile(wb, filename);
+export function exportRaw(result: ExtractionResult) {
+  const date = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(buildRawWorkbook(result), `RAW_EXPORT_${date}.xlsx`);
 }
 
-export function exportClean(result: ExtractionResult, filename: string) {
-  const wb = XLSX.utils.book_new();
-
-  // CLEAN SORTED OUTPUT
-  const cleanData = result.cleanRows.length ? result.cleanRows : [{ Note: "No clean data extracted." }];
-  const wsClean = XLSX.utils.json_to_sheet(cleanData);
-  autoSizeColumns(wsClean);
-  XLSX.utils.book_append_sheet(wb, wsClean, "CLEAN_SORTED_OUTPUT");
-
-  // Duplicates sheet
-  const dupes = result.cleanRows.filter((r) => r.Duplicate === "YES");
-  const wsDupes = XLSX.utils.json_to_sheet(dupes.length ? dupes : [{ Note: "No duplicates found." }]);
-  autoSizeColumns(wsDupes);
-  XLSX.utils.book_append_sheet(wb, wsDupes, "Duplicates");
-
-  // Instrument summary sheet
-  const instrMap = new Map<string, { count: number; dwgs: Set<string> }>();
-  result.cleanRows.forEach((r) => {
-    if (r.Instrument_Type) {
-      if (!instrMap.has(r.Instrument_Type)) instrMap.set(r.Instrument_Type, { count: 0, dwgs: new Set() });
-      const entry = instrMap.get(r.Instrument_Type)!;
-      entry.count++;
-      entry.dwgs.add(r.DWG);
-    }
-  });
-  const instrRows = [...instrMap.entries()]
-    .map(([type, v]) => ({
-      Instrument_Type: type,
-      Count: v.count,
-      Drawings: [...v.dwgs].join(", "),
-    }))
-    .sort((a, b) => b.Count - a.Count);
-  const wsInstr = XLSX.utils.json_to_sheet(instrRows.length ? instrRows : [{ Note: "No instruments found." }]);
-  autoSizeColumns(wsInstr);
-  XLSX.utils.book_append_sheet(wb, wsInstr, "Instrument_Summary");
-
-  XLSX.writeFile(wb, filename);
-}
-
-// ── Legacy single-file export (kept for backwards compat) ─────────────────────
+// ── Legacy Excel → DXF export (kept for Blocks & Attributes sheet compat) ────
 export function exportBatchToExcel(results: FileParsedResult[], filename: string = "autocad-batch-data.xlsx") {
   const wb = XLSX.utils.book_new();
 
@@ -189,18 +203,10 @@ export function exportBatchToExcel(results: FileParsedResult[], filename: string
   autoSizeColumns(ws2);
   XLSX.utils.book_append_sheet(wb, ws2, "Text & Annotations");
 
-  const summaryRows = results.map(({ fileName, data }) => ({
-    "File Name": fileName,
-    "Block Insertions": data.blocks.length,
-    "Text Entities": data.texts.length,
-    "Unique Layers": data.layers.length,
-  }));
-  const ws3 = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ Note: "No files." }]);
-  autoSizeColumns(ws3);
-  XLSX.utils.book_append_sheet(wb, ws3, "Summary");
-
   XLSX.writeFile(wb, filename);
 }
+
+// ── Auto column width ──────────────────────────────────────────────────────────
 
 function autoSizeColumns(ws: XLSX.WorkSheet) {
   const ref = ws["!ref"];

@@ -13,7 +13,7 @@ import {
   type ExtractionResult,
 } from "@/lib/engineeringExtractor";
 import {
-  exportRaw, exportClean, generateRawBuffer, generateCleanBuffer,
+  exportEngineerData, exportRaw, generateEngineerBuffer, generateRawBuffer,
   exportBatchToExcel, type FileParsedResult
 } from "@/lib/excelExport";
 import { parseExcelFile, generateDxf, downloadDxf, type ImportedExcelData } from "@/lib/excelToDxf";
@@ -203,7 +203,7 @@ function App() {
 
             {/* Feature pills */}
             <div className="hidden md:flex items-center gap-2 shrink-0">
-              {["Block Attributes", "Smart Classification", "Drawing-wise Sort", "Dual Excel Export"].map((pill) => (
+              {["5 Categories", "LINE_TOKENS Filter", "Instrument Pairing", "OPC Detection"].map((pill) => (
                 <span
                   key={pill}
                   className="px-3 py-1 rounded-full text-xs font-medium"
@@ -328,8 +328,8 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     setSaveStatus("saving");
     try {
       const date = new Date().toISOString().slice(0, 10);
-      await writeBufferToFolder(folderHandle, `RAW_BULK_EXPORT_${date}.xlsx`, generateRawBuffer(result));
-      await writeBufferToFolder(folderHandle, `CLEAN_SORTED_OUTPUT_${date}.xlsx`, generateCleanBuffer(result));
+      await writeBufferToFolder(folderHandle, `ENGINEER_DATA_${date}.xlsx`, generateEngineerBuffer(result));
+      await writeBufferToFolder(folderHandle, `RAW_EXPORT_${date}.xlsx`, generateRawBuffer(result));
       setSaveStatus("saved");
     } catch (e) {
       setSaveStatus("error");
@@ -345,7 +345,7 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     setIsProcessing(true);
     setResult(null);
     const updated = [...entries];
-    const perFile: { dwgName: string; rawRows: any[]; cleanRows: any[] }[] = [];
+    const perFile: { dwgName: string; rawRows: any[]; engineerRows: any[]; lineTokens: any[]; textReviewRows: any[]; drawingMetaRows: any[] }[] = [];
 
     for (let i = 0; i < updated.length; i++) {
       updated[i] = { ...updated[i], status: "processing" };
@@ -358,7 +358,8 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
           try {
             const parsed = parseDxf(content);
             const dwgName = updated[i].file.name.replace(/\.dxf$/i, "");
-            const { rawRows, cleanRows } = extractEngineeringData(dwgName, parsed);
+            const { rawRows, engineerRows, lineTokens, textReviewRows, drawingMetaRows } =
+              extractEngineeringData(dwgName, parsed);
 
             updated[i] = {
               ...updated[i],
@@ -367,7 +368,7 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
               blockCount: parsed.blocks.length,
               textCount: parsed.texts.length,
             };
-            perFile.push({ dwgName, rawRows, cleanRows });
+            perFile.push({ dwgName, rawRows, engineerRows, lineTokens, textReviewRows, drawingMetaRows });
           } catch (err: any) {
             updated[i] = { ...updated[i], status: "error", error: err.message };
           }
@@ -553,19 +554,19 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
 
             {result && (
               <>
-                <button onClick={() => exportRaw(result, `RAW_BULK_EXPORT_${new Date().toISOString().slice(0,10)}.xlsx`)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  RAW_BULK_EXPORT.xlsx
-                </button>
-                <button onClick={() => exportClean(result, `CLEAN_SORTED_OUTPUT_${new Date().toISOString().slice(0,10)}.xlsx`)}
+                <button onClick={() => exportEngineerData(result)}
                   className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  CLEAN_SORTED_OUTPUT.xlsx
+                  ENGINEER_DATA.xlsx
+                </button>
+                <button onClick={() => exportRaw(result)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  RAW_EXPORT.xlsx
                 </button>
                 {folderHandle && (
                   <button
@@ -612,10 +613,10 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
       {!hasFiles && (
         <div className="grid grid-cols-2 gap-4 mt-2">
           {[
-            { icon: "🏗️", title: "Engineering Column Structure", desc: "Outputs DWG, HANDLE, BLOCK, TAG, Line_Number, Instrument_Type, Size, Spec, Insulation, Tracing, Service, Status." },
-            { icon: "🧠", title: "Smart Text Classification", desc: "Automatically detects instrument tags, line numbers, sizes, specs and filters out notes, revisions, titles and garbage." },
-            { icon: "📄", title: "Two Output Files", desc: "RAW_BULK_EXPORT preserves everything untouched. CLEAN_SORTED_OUTPUT is deduplicated, classified, and sorted by DWG → Line → TAG." },
-            { icon: "🔍", title: "Duplicate Detection", desc: "Identifies and flags duplicate records across drawings. Duplicates appear in a separate sheet for review." },
+            { icon: "📋", title: "5 Engineering Categories", desc: "Every visible entity is sorted into LINE, INSTRUMENT, EQUIPMENT, OPC, or TEXT_REVIEW. One meaning = one column, no splits." },
+            { icon: "🔑", title: "LINE_TOKENS Sheet", desc: "Line numbers are kept full and intact. A separate token sheet lets you filter all 6\", A1A, or HI lines without splitting the original." },
+            { icon: "🎯", title: "Instrument Pairing", desc: "TOP/BOTTOM block attributes are auto-paired into Instrument_Type + Tag + Display (PI-2101). Works even with broken blocks." },
+            { icon: "🔀", title: "OPC Connector Detection", desc: "OFF-PAGE connectors and arrows with FROM/TO references are structured into OPC_From, OPC_To, and OPC_Display columns." },
           ].map((item) => (
             <div key={item.title} className="bg-card border border-border rounded-xl p-5">
               <div className="text-2xl mb-2">{item.icon}</div>
@@ -629,35 +630,47 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
   );
 }
 
+// ── Category badge colours ─────────────────────────────────────────────────────
+
+const CAT_STYLE: Record<string, { bg: string; text: string }> = {
+  LINE:         { bg: "bg-green-100",  text: "text-green-800" },
+  INSTRUMENT:   { bg: "bg-blue-100",   text: "text-blue-800" },
+  EQUIPMENT:    { bg: "bg-purple-100", text: "text-purple-800" },
+  OPC:          { bg: "bg-yellow-100", text: "text-yellow-800" },
+  TEXT_REVIEW:  { bg: "bg-orange-100", text: "text-orange-700" },
+  DRAWING_META: { bg: "bg-gray-100",   text: "text-gray-600" },
+};
+
 // ── Results Panel ─────────────────────────────────────────────────────────────
 
 function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCount: number }) {
-  const { stats, cleanRows } = result;
+  const { stats, engineerRows, lineTokens, textReviewRows, drawingMetaRows } = result;
 
-  // Instrument type summary
+  // Instrument types breakdown
   const instrMap = new Map<string, number>();
-  cleanRows.forEach((r) => {
-    if (r.Instrument_Type) instrMap.set(r.Instrument_Type, (instrMap.get(r.Instrument_Type) || 0) + 1);
-  });
-  const topInstrs = [...instrMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  engineerRows
+    .filter((r) => r.Category === "INSTRUMENT" && r.Instrument_Type)
+    .forEach((r) => instrMap.set(r.Instrument_Type, (instrMap.get(r.Instrument_Type) || 0) + 1));
+  const topInstrs = [...instrMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-  // Preview first 8 clean rows
-  const preview = cleanRows.slice(0, 8);
+  // Preview first 10 engineer rows
+  const preview = engineerRows.slice(0, 10);
 
   return (
     <div className="space-y-5 border border-border rounded-xl p-5 bg-card">
       <h3 className="font-semibold text-base">Extraction Results</h3>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Category stats grid */}
+      <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Drawings", value: doneCount, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Raw Entities", value: stats.totalEntities, color: "text-gray-700", bg: "bg-gray-50" },
-          { label: "Block Rows", value: stats.blockRows, color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Text Rows", value: stats.textRows, color: "text-indigo-600", bg: "bg-indigo-50" },
-          { label: "Clean Rows", value: cleanRows.length, color: "text-green-600", bg: "bg-green-50" },
-          { label: "Filtered Out", value: stats.filteredOut, color: "text-orange-600", bg: "bg-orange-50" },
-          { label: "Duplicates", value: stats.duplicates, color: stats.duplicates > 0 ? "text-red-600" : "text-gray-400", bg: stats.duplicates > 0 ? "bg-red-50" : "bg-gray-50" },
+          { label: "Drawings",    value: doneCount,              color: "text-blue-600",   bg: "bg-blue-50" },
+          { label: "Lines",       value: stats.linesFound,       color: "text-green-700",  bg: "bg-green-50" },
+          { label: "Instruments", value: stats.instrumentsFound, color: "text-blue-700",   bg: "bg-blue-50" },
+          { label: "Equipment",   value: stats.equipmentFound,   color: "text-purple-700", bg: "bg-purple-50" },
+          { label: "OPC",         value: stats.opcFound,         color: "text-yellow-700", bg: "bg-yellow-50" },
+          { label: "Text Review", value: stats.textReview,       color: "text-orange-600", bg: "bg-orange-50" },
+          { label: "Line Tokens", value: lineTokens.length,      color: "text-teal-700",   bg: "bg-teal-50" },
+          { label: "Raw Entities",value: stats.totalEntities,    color: "text-gray-600",   bg: "bg-gray-50" },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
@@ -674,69 +687,88 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
           </h4>
           <div className="flex flex-wrap gap-2">
             {topInstrs.map(([type, count]) => (
-              <span key={type} className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
-                {type} <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[10px]">{count}</span>
+              <span key={type} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium">
+                {type}
+                <span className="bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px]">{count}</span>
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Clean data preview */}
+      {/* ENGINEER_VISIBLE_DATA preview */}
       {preview.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            CLEAN_SORTED_OUTPUT Preview (first {preview.length} rows)
+            ENGINEER_VISIBLE_DATA Preview (first {preview.length} rows)
           </h4>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
                 <tr>
-                  {["DWG", "HANDLE", "BLOCK", "TAG", "Line_Number", "Instrument_Type", "Size", "Spec", "Service", "Status", "Detected_Type"].map((h) => (
+                  {["DWG", "Category", "Line_Number", "Instrument_Display", "Equipment_Tag", "OPC_Display", "Visible_Text", "Status"].map((h) => (
                     <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {preview.map((row, i) => (
-                  <tr key={i} className={`hover:bg-muted/20 transition-colors ${row.Duplicate === "YES" ? "bg-red-50" : ""}`}>
-                    <td className="px-3 py-2 font-medium max-w-[120px] truncate">{row.DWG}</td>
-                    <td className="px-3 py-2 font-mono text-muted-foreground">{row.HANDLE}</td>
-                    <td className="px-3 py-2 font-mono">{row.BLOCK}</td>
-                    <td className="px-3 py-2 font-semibold text-primary">{row.TAG}</td>
-                    <td className="px-3 py-2">{row.Line_Number}</td>
-                    <td className="px-3 py-2 max-w-[150px] truncate">{row.Instrument_Type}</td>
-                    <td className="px-3 py-2">{row.Size}</td>
-                    <td className="px-3 py-2">{row.Spec}</td>
-                    <td className="px-3 py-2">{row.Service}</td>
-                    <td className="px-3 py-2">
-                      {row.Status && (
-                        <span className="px-1.5 py-0.5 bg-muted rounded text-xs">{row.Status}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                        row.Detected_Type === "BLOCK_ATTRIB" ? "bg-purple-100 text-purple-700" :
-                        row.Detected_Type === "INSTRUMENT_TAG" ? "bg-blue-100 text-blue-700" :
-                        row.Detected_Type === "LINE_NUMBER" ? "bg-green-100 text-green-700" :
-                        "bg-muted text-muted-foreground"
-                      }`}>{row.Detected_Type}</span>
-                    </td>
-                  </tr>
-                ))}
+                {preview.map((row, i) => {
+                  const cs = CAT_STYLE[row.Category] || { bg: "bg-muted", text: "text-muted-foreground" };
+                  return (
+                    <tr key={i} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[120px] truncate">{row.DWG}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${cs.bg} ${cs.text}`}>
+                          {row.Category}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-green-700">{row.Line_Number}</td>
+                      <td className="px-3 py-2 font-semibold text-blue-700">{row.Instrument_Display}</td>
+                      <td className="px-3 py-2 text-purple-700">{row.Equipment_Tag}</td>
+                      <td className="px-3 py-2 text-yellow-700 max-w-[140px] truncate">{row.OPC_Display}</td>
+                      <td className="px-3 py-2 max-w-[160px] truncate text-muted-foreground">{row.Visible_Text}</td>
+                      <td className="px-3 py-2">
+                        {row.Status && (
+                          <span className="px-1.5 py-0.5 bg-muted rounded text-[10px]">{row.Status}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-            {cleanRows.length > 8 && (
+            {engineerRows.length > 10 && (
               <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border">
-                Showing 8 of {cleanRows.length} clean rows — full data in downloaded Excel
+                Showing 10 of {engineerRows.length} engineer rows · Full data in ENGINEER_DATA.xlsx
               </div>
             )}
           </div>
         </div>
       )}
 
+      {/* Output file description */}
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+          <div className="font-semibold text-green-800 mb-1">ENGINEER_DATA.xlsx</div>
+          <div className="text-green-700 space-y-0.5">
+            <div>📋 Sheet 1: ENGINEER_VISIBLE_DATA — {engineerRows.length} rows</div>
+            <div>🔑 Sheet 2: LINE_TOKENS — {lineTokens.length} tokens</div>
+            <div>🔍 Sheet 3: TEXT_REVIEW — {textReviewRows.length} items</div>
+            <div>📌 Sheet 4: DRAWING_META — {drawingMetaRows.length} items</div>
+          </div>
+        </div>
+        <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+          <div className="font-semibold text-orange-800 mb-1">RAW_EXPORT.xlsx</div>
+          <div className="text-orange-700 space-y-0.5">
+            <div>📦 Sheet 1: RAW_EXPORT — {stats.totalEntities} entities</div>
+            <div>📊 Sheet 2: Export_Stats</div>
+            <div className="mt-1 text-orange-600">All original data preserved untouched</div>
+          </div>
+        </div>
+      </div>
+
       <div className="text-xs text-muted-foreground border-t border-border pt-3">
-        ✅ HANDLE integrity preserved · Data sorted by DWG → Line_Number → Instrument_Type → TAG → HANDLE · Duplicates flagged
+        ✅ Sorted: DWG → Category → Line_Number / Instrument_Tag → Handle · LINE_TOKENS for token-based filtering
       </div>
     </div>
   );
