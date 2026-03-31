@@ -86,25 +86,32 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-600 ${
         leaving ? "opacity-0" : visible ? "opacity-100" : "opacity-0"
       }`}
-      style={{ background: "#e8e8e8" }}
+      style={{ background: "#dde1e5" }}
     >
-      {/* Full image — contain so nothing is cropped */}
-      <img
-        src="/cover2.png"
-        alt="AutoCAD Data Engine — Gaurav Bharti"
-        className="absolute inset-0 w-full h-full"
-        style={{ objectFit: "contain", objectPosition: "center" }}
-      />
+      {/* Image — full width, natural aspect ratio, no crop on any screen */}
+      <div className="w-full flex items-center justify-center px-2 pt-4 pb-3">
+        <img
+          src="/cover2.png"
+          alt="AutoCAD Data Engine — Gaurav Bharti"
+          className="w-full max-w-5xl"
+          style={{
+            maxHeight: "calc(100svh - 64px)",
+            width: "100%",
+            height: "auto",
+            display: "block",
+          }}
+        />
+      </div>
 
-      {/* Launch button — bottom centre, above image */}
-      <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center">
+      {/* Launch button — sits below the image */}
+      <div className="w-full flex justify-center pb-6 shrink-0">
         <button
           onClick={handleEnter}
-          className="group flex items-center gap-2 px-7 py-2.5 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
+          className="flex items-center gap-2 px-8 py-2.5 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
           style={{
             background: "linear-gradient(135deg, #0077b6 0%, #023e8a 100%)",
             color: "#fff",
-            boxShadow: "0 0 28px rgba(0,119,182,0.5), 0 4px 20px rgba(0,0,0,0.25)",
+            boxShadow: "0 0 24px rgba(0,119,182,0.45), 0 4px 16px rgba(0,0,0,0.2)",
           }}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -146,22 +153,22 @@ function App() {
       {/* ── Glass Hero Header ─────────────────────────────────────────────── */}
       <header
         className="relative overflow-hidden"
-        style={{ minHeight: 200 }}
+        style={{ minHeight: 180 }}
       >
         {/* Cover image full-bleed background */}
         <img
-          src="/cover.png"
+          src="/cover2.png"
           alt=""
           aria-hidden="true"
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ objectPosition: "center 30%" }}
+          style={{ objectPosition: "center 40%" }}
         />
-        {/* Dark gradient scrim so text is readable */}
+        {/* Blue gradient scrim — matches cover image's blue palette */}
         <div
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(135deg, rgba(0,0,0,0.72) 0%, rgba(10,0,0,0.55) 60%, rgba(0,0,0,0.78) 100%)",
+              "linear-gradient(135deg, rgba(2,62,138,0.82) 0%, rgba(0,119,182,0.70) 50%, rgba(2,62,138,0.85) 100%)",
           }}
         />
 
@@ -181,8 +188,8 @@ function App() {
             <div
               className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0"
               style={{
-                background: "linear-gradient(135deg, #c8102e 0%, #7b0000 100%)",
-                boxShadow: "0 0 20px rgba(200,16,46,0.5)",
+                background: "linear-gradient(135deg, #0077b6 0%, #023e8a 100%)",
+                boxShadow: "0 0 20px rgba(0,119,182,0.5)",
               }}
             >
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -207,9 +214,9 @@ function App() {
                   key={pill}
                   className="px-3 py-1 rounded-full text-xs font-medium"
                   style={{
-                    background: "rgba(200,16,46,0.22)",
-                    border: "1px solid rgba(200,16,46,0.4)",
-                    color: "#ff7070",
+                    background: "rgba(0,180,255,0.18)",
+                    border: "1px solid rgba(0,180,255,0.4)",
+                    color: "#7de8ff",
                   }}
                 >
                   {pill}
@@ -231,15 +238,15 @@ function App() {
                 style={
                   activeTab === tab.id
                     ? {
-                        background: "rgba(200,16,46,0.85)",
+                        background: "rgba(0,180,255,0.25)",
                         color: "#fff",
-                        boxShadow: "0 0 16px rgba(200,16,46,0.4)",
-                        border: "1px solid rgba(200,16,46,0.6)",
+                        boxShadow: "0 0 14px rgba(0,160,230,0.35)",
+                        border: "1px solid rgba(0,200,255,0.5)",
                       }
                     : {
                         background: "rgba(255,255,255,0.08)",
                         color: "rgba(255,255,255,0.7)",
-                        border: "1px solid rgba(255,255,255,0.12)",
+                        border: "1px solid rgba(255,255,255,0.15)",
                         backdropFilter: "blur(8px)",
                       }
                 }

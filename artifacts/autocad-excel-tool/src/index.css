@@ -74,28 +74,28 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 210 20% 98%;
+  --background: 210 18% 91%;
   --foreground: 220 20% 12%;
-  --border: 214 20% 88%;
-  --input: 214 20% 88%;
-  --ring: 221 83% 53%;
+  --border: 210 16% 80%;
+  --input: 210 16% 80%;
+  --ring: 199 83% 38%;
 
   --card: 0 0% 100%;
   --card-foreground: 220 20% 12%;
-  --card-border: 214 20% 88%;
+  --card-border: 210 16% 82%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 220 20% 12%;
   --popover-border: 214 20% 88%;
 
-  --primary: 221 83% 53%;
+  --primary: 199 90% 36%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 20% 92%;
+  --secondary: 210 18% 86%;
   --secondary-foreground: 220 20% 20%;
 
-  --muted: 210 20% 95%;
-  --muted-foreground: 215 16% 47%;
+  --muted: 210 16% 87%;
+  --muted-foreground: 215 16% 44%;
 
   --accent: 210 20% 92%;
   --accent-foreground: 220 20% 12%;
