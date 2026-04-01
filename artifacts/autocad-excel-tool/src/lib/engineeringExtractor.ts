@@ -340,14 +340,21 @@ export function extractEngineeringData(
         Attribute_Tag: "", Attribute_Value: "", Raw_Text: "", Detected_Type: "BLOCK",
       });
     } else {
+      // Tags that identify instrument data in P&ID blocks
+      const INSTRUMENT_ATTR_TAGS = new Set(["TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCTN", "FUNCTION"]);
+
       for (const attr of attrs) {
+        const tagUpper = attr.tag.toUpperCase().trim();
+        const isInstrAttr = INSTRUMENT_ATTR_TAGS.has(tagUpper);
         const classified = classifyText(attr.value);
+        const detectedType = isInstrAttr ? "INSTRUMENTS" : classified.textClass;
+
         rawRows.push({
           DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
           BLOCK: blockName, Layer: block.layer,
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: attr.value,
-          Raw_Text: "", Detected_Type: classified.textClass,
+          Raw_Text: "", Detected_Type: detectedType,
         });
       }
     }
