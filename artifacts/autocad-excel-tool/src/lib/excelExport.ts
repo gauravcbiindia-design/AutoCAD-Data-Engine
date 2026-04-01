@@ -35,6 +35,10 @@ const RAW_COLUMNS = [
   "X", "Y", "Attribute_Tag", "Attribute_Value", "Raw_Text", "Detected_Type",
 ];
 
+const INSTRUMENT_SHEET_COLUMNS = [
+  "DWG", "BLOCK", "Instrument_Tag", "Instrument_Value",
+];
+
 // ── Sheet builder helper ───────────────────────────────────────────────────────
 
 function makeSheet<T extends object>(
@@ -106,7 +110,37 @@ export function buildRawWorkbook(result: ExtractionResult): XLSX.WorkBook {
     "RAW_EXPORT"
   );
 
-  // Sheet 2 — Export_Stats
+  // Sheet 2 — INSTRUMENTS
+  // Collect handles of blocks that have at least one TOP/BOTTOM/MID attribute
+  const instrHandles = new Set<string>();
+  for (const row of result.rawRows) {
+    if (row.Detected_Type === "INSTRUMENTS" && row.Attribute_Tag !== "INSTRUMENT") {
+      instrHandles.add(row.HANDLE);
+    }
+  }
+  // For each instrument block, list ALL its attributes (Instrument_Tag + Instrument_Value)
+  const instrSheetRows: Record<string, string>[] = [];
+  for (const row of result.rawRows) {
+    if (
+      instrHandles.has(row.HANDLE) &&
+      row.Attribute_Tag !== "INSTRUMENT" &&   // skip synthetic summary row
+      row.Attribute_Tag !== ""                 // skip empty handle-only rows
+    ) {
+      instrSheetRows.push({
+        DWG: String(row.DWG ?? ""),
+        BLOCK: String(row.BLOCK ?? ""),
+        Instrument_Tag: String(row.Attribute_Tag ?? ""),
+        Instrument_Value: String(row.Attribute_Value ?? ""),
+      });
+    }
+  }
+  XLSX.utils.book_append_sheet(
+    wb,
+    makeSheet(instrSheetRows, INSTRUMENT_SHEET_COLUMNS, "No instrument blocks found."),
+    "INSTRUMENTS"
+  );
+
+  // Sheet 3 — Export_Stats
   const statsRows = [
     { Metric: "Total Raw Entities",   Value: result.stats.totalEntities },
     { Metric: "Block / Attribute Rows", Value: result.stats.blockRows },
