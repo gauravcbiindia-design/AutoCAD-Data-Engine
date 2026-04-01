@@ -148,6 +148,38 @@ export function exportRaw(result: ExtractionResult) {
   XLSX.writeFile(buildRawWorkbook(result), `RAW_EXPORT_${date}.xlsx`);
 }
 
+/** Export RAW_EXPORT data as a plain CSV file (edit in Notepad/Excel, upload back to patch DXFs) */
+export function exportRawCsv(result: ExtractionResult) {
+  const date = new Date().toISOString().slice(0, 10);
+  const rows = result.rawRows;
+  if (rows.length === 0) return;
+
+  const headers = RAW_COLUMNS;
+
+  const escape = (v: unknown) => {
+    const s = String(v ?? "");
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+
+  const lines = [
+    headers.join(","),
+    ...rows.map((row: any) => headers.map((h) => escape(row[h] ?? "")).join(",")),
+  ];
+
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `RAW_EXPORT_${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Legacy Excel → DXF export (kept for Blocks & Attributes sheet compat) ────
 export function exportBatchToExcel(results: FileParsedResult[], filename: string = "autocad-batch-data.xlsx") {
   const wb = XLSX.utils.book_new();

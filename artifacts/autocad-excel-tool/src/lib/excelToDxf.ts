@@ -1,6 +1,6 @@
 /**
  * @copyright © 2026 G. Bharti. All rights reserved.
- * @description CAD Data Engine — Excel to DXF Patch Module
+ * @description CAD Data Engine — Excel / CSV to DXF Patch Module
  *
  * CORRECT APPROACH: Instead of generating DXF from scratch (which produces
  * structurally invalid files AutoCAD cannot open), we READ the original DXF
@@ -10,8 +10,10 @@
  * TABLES, BLOCKS, OBJECTS sections all come from the original valid file.
  * Only attribute values and text content are modified.
  *
+ * Accepts both RAW_EXPORT.xlsx and RAW_EXPORT.csv as input.
+ *
  * Workflow:
- *   1. User uploads edited RAW_EXPORT.xlsx
+ *   1. User uploads edited RAW_EXPORT.xlsx OR RAW_EXPORT.csv
  *   2. App reads DWG + HANDLE + Attribute_Tag + Attribute_Value columns
  *   3. App groups changes by source DWG filename
  *   4. For each DWG, user's original .dxf is read from the selected folder
@@ -50,50 +52,32 @@ export interface ParsedExcelResult {
   errors: string[];
 }
 
-// ── Excel parser ───────────────────────────────────────────────────────────────
+// ── Shared row → patch map builder ────────────────────────────────────────────
 
 /**
- * Reads an edited RAW_EXPORT.xlsx and builds a patch map grouped by DWG.
- * Accepts either RAW_EXPORT.xlsx (RAW_EXPORT sheet) or any xlsx with those columns.
+ * Converts an array of plain objects (from Excel or CSV) into a ParsedExcelResult.
+ * Expected column names: DWG, HANDLE, Entity_Type, Attribute_Tag, Attribute_Value, Raw_Text
  */
-export function parseRawExport(buffer: ArrayBuffer): ParsedExcelResult {
+function rowsToPatchResult(rows: any[], sourceName: string): ParsedExcelResult {
   const errors: string[] = [];
   const byDwg = new Map<string, DwgPatchMap>();
   let totalChanges = 0;
 
-  const wb = XLSX.read(buffer, { type: "array" });
-
-  // Accept "RAW_EXPORT" sheet name (from our export) or first sheet
-  const sheetName = wb.SheetNames.includes("RAW_EXPORT")
-    ? "RAW_EXPORT"
-    : wb.SheetNames[0];
-
-  if (!sheetName) {
-    errors.push("Excel file has no sheets.");
-    return { byDwg, totalChanges, dwgNames: [], errors };
-  }
-
-  const ws = wb.Sheets[sheetName];
-  const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
   if (rows.length === 0) {
-    errors.push(`Sheet "${sheetName}" is empty.`);
+    errors.push(`"${sourceName}" is empty.`);
     return { byDwg, totalChanges, dwgNames: [], errors };
   }
 
-  // Check required columns exist
   const firstRow = rows[0];
   const hasRequired = "DWG" in firstRow && "HANDLE" in firstRow;
   if (!hasRequired) {
     errors.push(
-      `Sheet "${sheetName}" must have DWG and HANDLE columns. ` +
-      `Found columns: ${Object.keys(firstRow).join(", ")}`
+      `File must have DWG and HANDLE columns. Found: ${Object.keys(firstRow).join(", ")}`
     );
     return { byDwg, totalChanges, dwgNames: [], errors };
   }
 
   for (const row of rows) {
-    // Skip header-like or empty rows
     if (!row.DWG || !row.HANDLE) continue;
 
     const dwg = String(row.DWG).trim().replace(/\.dxf$/i, "").replace(/\.dwg$/i, "");
@@ -103,22 +87,107 @@ export function parseRawExport(buffer: ArrayBuffer): ParsedExcelResult {
     const attrValue = String(row.Attribute_Value ?? "").trim();
     const rawText = String(row.Raw_Text ?? "").trim();
 
-    if (!handle || handle === "HANDLE") continue; // skip header row if repeated
+    if (!handle || handle === "HANDLE") continue;
 
     if (!byDwg.has(dwg)) byDwg.set(dwg, new Map());
     const patchMap = byDwg.get(dwg)!;
 
-    patchMap.set(handle, {
-      tag: attrTag,
-      value: attrValue,
-      rawText,
-      entityType,
-    });
+    patchMap.set(handle, { tag: attrTag, value: attrValue, rawText, entityType });
     totalChanges++;
   }
 
   const dwgNames = Array.from(byDwg.keys()).sort();
   return { byDwg, totalChanges, dwgNames, errors };
+}
+
+// ── CSV parser ─────────────────────────────────────────────────────────────────
+
+/**
+ * Parses a CSV string (RFC 4180 compatible) into an array of row objects.
+ * Handles quoted fields, embedded commas, and embedded newlines.
+ */
+function parseCsvToRows(csv: string): any[] {
+  const lines = csv.split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  // Parse header row
+  const headers = splitCsvLine(lines[0]);
+
+  const result: any[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values = splitCsvLine(lines[i]);
+    const row: any = {};
+    headers.forEach((h, idx) => {
+      row[h.trim()] = values[idx] ?? "";
+    });
+    result.push(row);
+  }
+  return result;
+}
+
+/** Splits one CSV line respecting quoted fields */
+function splitCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+// ── Public parsers ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse edited RAW_EXPORT.csv (text content from FileReader).
+ */
+export function parseRawExportCsv(csvText: string): ParsedExcelResult {
+  const rows = parseCsvToRows(csvText);
+  return rowsToPatchResult(rows, "RAW_EXPORT.csv");
+}
+
+// ── Excel parser ───────────────────────────────────────────────────────────────
+
+/**
+ * Reads an edited RAW_EXPORT.xlsx and builds a patch map grouped by DWG.
+ * Accepts either RAW_EXPORT.xlsx (RAW_EXPORT sheet) or any xlsx with those columns.
+ */
+export function parseRawExport(buffer: ArrayBuffer): ParsedExcelResult {
+  const wb = XLSX.read(buffer, { type: "array" });
+
+  const sheetName = wb.SheetNames.includes("RAW_EXPORT")
+    ? "RAW_EXPORT"
+    : wb.SheetNames[0];
+
+  if (!sheetName) {
+    return {
+      byDwg: new Map(),
+      totalChanges: 0,
+      dwgNames: [],
+      errors: ["Excel file has no sheets."],
+    };
+  }
+
+  const ws = wb.Sheets[sheetName];
+  const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+  return rowsToPatchResult(rows, sheetName);
 }
 
 // ── DXF patcher ────────────────────────────────────────────────────────────────

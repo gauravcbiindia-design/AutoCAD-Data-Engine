@@ -13,11 +13,11 @@ import {
   type ExtractionResult,
 } from "@/lib/engineeringExtractor";
 import {
-  exportEngineerData, exportRaw, generateEngineerBuffer, generateRawBuffer,
+  exportEngineerData, exportRaw, exportRawCsv, generateEngineerBuffer, generateRawBuffer,
   exportBatchToExcel, type FileParsedResult
 } from "@/lib/excelExport";
 import {
-  parseRawExport, patchDxfContent, downloadDxf,
+  parseRawExport, parseRawExportCsv, patchDxfContent, downloadDxf,
   readDxfFromFolder, writeUpdatedDxf,
   type ParsedExcelResult, type DwgPatchMap,
 } from "@/lib/excelToDxf";
@@ -578,6 +578,15 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
                   </svg>
                   RAW_EXPORT.xlsx
                 </button>
+                <button onClick={() => exportRawCsv(result)}
+                  title="Export RAW_EXPORT as CSV — edit in Notepad / Excel, then upload back to patch DXFs"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium hover:opacity-90 transition-opacity text-sm"
+                  style={{ background: "rgba(234,179,8,0.15)", border: "1px solid rgba(234,179,8,0.4)", color: "#ca8a04" }}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  RAW_EXPORT.csv
+                </button>
                 {folderHandle && (
                   <button
                     onClick={handleSaveToFolder}
@@ -828,8 +837,10 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
-    if (!file.name.match(/\.xlsx?$/i)) {
-      setParseError("Please upload a valid .xlsx or .xls file.");
+    const isCsv = file.name.match(/\.csv$/i);
+    const isExcel = file.name.match(/\.xlsx?$/i);
+    if (!isCsv && !isExcel) {
+      setParseError("Please upload a .csv, .xlsx, or .xls file.");
       return;
     }
     setParseError("");
@@ -838,21 +849,40 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
     setParsed(null);
     setDwgResults([]);
     setAllDone(false);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const buffer = e.target?.result as ArrayBuffer;
-      try {
-        const result = parseRawExport(buffer);
-        setParsed(result);
-        if (result.errors.length > 0 && result.totalChanges === 0) {
-          setParseError(result.errors.join(" "));
+
+    if (isCsv) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        try {
+          const result = parseRawExportCsv(text);
+          setParsed(result);
+          if (result.errors.length > 0 && result.totalChanges === 0) {
+            setParseError(result.errors.join(" "));
+          }
+        } catch (err: any) {
+          setParseError("Failed to read CSV file: " + err.message);
         }
-      } catch (err: any) {
-        setParseError("Failed to read Excel file: " + err.message);
-      }
-      setIsParsing(false);
-    };
-    reader.readAsArrayBuffer(file);
+        setIsParsing(false);
+      };
+      reader.readAsText(file, "utf-8");
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const buffer = e.target?.result as ArrayBuffer;
+        try {
+          const result = parseRawExport(buffer);
+          setParsed(result);
+          if (result.errors.length > 0 && result.totalChanges === 0) {
+            setParseError(result.errors.join(" "));
+          }
+        } catch (err: any) {
+          setParseError("Failed to read Excel file: " + err.message);
+        }
+        setIsParsing(false);
+      };
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -1011,14 +1041,14 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
             <input
               ref={fileRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".csv,.xlsx,.xls"
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }}
             />
             {isParsing ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="w-9 h-9 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-muted-foreground">Reading Excel...</p>
+                <p className="text-sm text-muted-foreground">Reading file...</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3">
@@ -1028,8 +1058,13 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                   </svg>
                 </div>
                 <div>
-                  <p className="font-medium text-sm">Drop RAW_EXPORT.xlsx here</p>
+                  <p className="font-medium text-sm">Drop RAW_EXPORT.csv or .xlsx here</p>
                   <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">.csv</span>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">.xlsx</span>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">.xls</span>
                 </div>
               </div>
             )}
