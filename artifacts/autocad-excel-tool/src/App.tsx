@@ -16,7 +16,11 @@ import {
   exportEngineerData, exportRaw, generateEngineerBuffer, generateRawBuffer,
   exportBatchToExcel, type FileParsedResult
 } from "@/lib/excelExport";
-import { parseExcelFile, generateDxf, downloadDxf, type ImportedExcelData } from "@/lib/excelToDxf";
+import {
+  parseRawExport, patchDxfContent, downloadDxf,
+  readDxfFromFolder, writeUpdatedDxf,
+  type ParsedExcelResult, type DwgPatchMap,
+} from "@/lib/excelToDxf";
 
 // ── File System Access API helpers ────────────────────────────────────────────
 
@@ -804,161 +808,357 @@ interface ExcelToDxfProps {
   setFolderHandle: (h: FileSystemDirectoryHandle | null) => void;
 }
 
+interface DwgResult {
+  dwg: string;
+  status: "pending" | "processing" | "done" | "error";
+  replacements: number;
+  error?: string;
+  outputName?: string;
+}
+
 function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [parsed, setParsed] = useState<ImportedExcelData | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsed, setParsed] = useState<ParsedExcelResult | null>(null);
   const [fileName, setFileName] = useState("");
-  const [error, setError] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [parseError, setParseError] = useState("");
+  const [dwgResults, setDwgResults] = useState<DwgResult[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+  const [allDone, setAllDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
-    if (!file.name.match(/\.xlsx?$/i)) { setError("Please upload a valid .xlsx or .xls file."); return; }
-    setError(""); setIsProcessing(true); setFileName(file.name); setSaveStatus("idle");
+    if (!file.name.match(/\.xlsx?$/i)) {
+      setParseError("Please upload a valid .xlsx or .xls file.");
+      return;
+    }
+    setParseError("");
+    setIsParsing(true);
+    setFileName(file.name);
+    setParsed(null);
+    setDwgResults([]);
+    setAllDone(false);
     const reader = new FileReader();
     reader.onload = (e) => {
       const buffer = e.target?.result as ArrayBuffer;
-      try { setParsed(parseExcelFile(buffer)); }
-      catch (err: any) { setError("Failed to parse Excel file: " + err.message); }
-      setIsProcessing(false);
+      try {
+        const result = parseRawExport(buffer);
+        setParsed(result);
+        if (result.errors.length > 0 && result.totalChanges === 0) {
+          setParseError(result.errors.join(" "));
+        }
+      } catch (err: any) {
+        setParseError("Failed to read Excel file: " + err.message);
+      }
+      setIsParsing(false);
     };
     reader.readAsArrayBuffer(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
+    e.preventDefault();
+    setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) processFile(file);
   };
 
-  const handleExport = () => {
-    if (!parsed) return;
-    const dxf = generateDxf(parsed);
-    downloadDxf(dxf, fileName.replace(/\.xlsx?$/i, "") + "-output.dxf");
-  };
+  const handleApply = async () => {
+    if (!parsed || !folderHandle) return;
+    setIsApplying(true);
+    setAllDone(false);
 
-  const handleSaveToFolder = async () => {
-    if (!folderHandle || !parsed) return;
-    setSaveStatus("saving");
-    try {
-      const dxf = generateDxf(parsed);
-      const outName = fileName.replace(/\.xlsx?$/i, "") + "-output.dxf";
-      await writeTextToFolder(folderHandle, outName, dxf);
-      setSaveStatus("saved");
-    } catch {
-      setSaveStatus("error");
+    const initial: DwgResult[] = parsed.dwgNames.map((dwg) => ({
+      dwg, status: "pending", replacements: 0,
+    }));
+    setDwgResults(initial);
+
+    let allSuccess = true;
+    for (let i = 0; i < parsed.dwgNames.length; i++) {
+      const dwg = parsed.dwgNames[i];
+      const patches = parsed.byDwg.get(dwg)!;
+
+      setDwgResults((prev) =>
+        prev.map((r) => r.dwg === dwg ? { ...r, status: "processing" } : r)
+      );
+
+      try {
+        const originalDxf = await readDxfFromFolder(folderHandle, dwg + ".dxf");
+        const { patched, replacements } = patchDxfContent(originalDxf, patches);
+        const outName = await writeUpdatedDxf(folderHandle, dwg, patched);
+        setDwgResults((prev) =>
+          prev.map((r) => r.dwg === dwg
+            ? { ...r, status: "done", replacements, outputName: outName }
+            : r
+          )
+        );
+      } catch (err: any) {
+        allSuccess = false;
+        setDwgResults((prev) =>
+          prev.map((r) => r.dwg === dwg
+            ? { ...r, status: "error", error: err.message }
+            : r
+          )
+        );
+      }
     }
+
+    setIsApplying(false);
+    setAllDone(allSuccess);
   };
 
-  const reset = () => { setParsed(null); setFileName(""); setError(""); setSaveStatus("idle"); if (fileRef.current) fileRef.current.value = ""; };
+  const reset = () => {
+    setParsed(null);
+    setFileName("");
+    setParseError("");
+    setDwgResults([]);
+    setAllDone(false);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const folderName = folderHandle ? (folderHandle as any).name : null;
+  const needsFolder = parsed && parsed.totalChanges > 0 && !folderHandle;
+  const canApply = parsed && parsed.totalChanges > 0 && !!folderHandle && !isApplying;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold mb-1">Generate DXF from Excel</h2>
+        <h2 className="text-xl font-semibold mb-1">Write Changes Back to DXF</h2>
         <p className="text-sm text-muted-foreground">
-          Upload an Excel file (from the DXF → Excel tab) to generate a DXF file with block insertions and text entities.
+          Edit values in <strong>RAW_EXPORT.xlsx</strong>, then upload it here. The app will patch
+          only the changed values into your original DXF files — one updated file per drawing.
         </p>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-        Expected sheets: <span className="font-mono bg-blue-100 px-1 rounded">Blocks & Attributes</span> and/or{" "}
-        <span className="font-mono bg-blue-100 px-1 rounded">Text & Annotations</span>
+      {/* How it works */}
+      <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm space-y-2">
+        <div className="font-semibold text-foreground mb-1">How it works</div>
+        <div className="grid grid-cols-1 gap-1.5 text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <span className="text-primary font-bold shrink-0">1.</span>
+            <span>Export DXF files as usual → edit values in <strong className="text-foreground">RAW_EXPORT.xlsx</strong></span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-primary font-bold shrink-0">2.</span>
+            <span>Select the folder containing your <strong className="text-foreground">original .dxf files</strong> (the same folder you exported from)</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-primary font-bold shrink-0">3.</span>
+            <span>Upload the edited RAW_EXPORT.xlsx and click <strong className="text-foreground">Apply Changes</strong></span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-primary font-bold shrink-0">4.</span>
+            <span>The app writes <strong className="text-foreground">updated_{"{filename}"}.dxf</strong> files into the same folder — AutoCAD-ready</span>
+          </div>
+        </div>
       </div>
 
-      {!parsed && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
-            isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/30"
-          }`}
-        >
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
-          {isProcessing ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-muted-foreground">Parsing Excel...</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-                <svg className="w-7 h-7 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-medium">Drop your Excel file here</p>
-                <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
-              </div>
-              <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">.xlsx / .xls only</span>
-            </div>
-          )}
+      {/* Step 1: Folder selection */}
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Step 1 — Original DXF Folder
         </div>
-      )}
-
-      {error && (
-        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">{error}</div>
-      )}
-
-      {parsed && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Block Insertions", value: parsed.blocks.length, icon: "🔲" },
-              { label: "Text Entities", value: parsed.texts.length, icon: "📝" },
-            ].map((s) => (
-              <div key={s.label} className="bg-card border border-border rounded-xl p-5 text-center">
-                <div className="text-2xl mb-1">{s.icon}</div>
-                <div className="text-3xl font-bold">{s.value}</div>
-                <div className="text-sm text-muted-foreground mt-1">{s.label}</div>
-              </div>
-            ))}
-          </div>
-          {parsed.errors.length > 0 && (
-            <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
-              {parsed.errors.map((e, i) => <div key={i}>{e}</div>)}
-            </div>
-          )}
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={handleExport}
-              className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download DXF
+        {folderHandle ? (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+            <svg className="w-5 h-5 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            </svg>
+            <span className="text-sm font-medium text-green-300">📂 {folderName}</span>
+            <button
+              onClick={() => setFolderHandle(null)}
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Change
             </button>
-            {folderHandle && (
+          </div>
+        ) : folderApiSupported ? (
+          <button
+            onClick={async () => {
+              try {
+                const h = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+                setFolderHandle(h);
+              } catch {}
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-primary/50 text-primary text-sm font-medium hover:bg-primary/5 transition-colors w-full justify-center"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+            </svg>
+            Select Folder with Original DXF Files
+          </button>
+        ) : (
+          <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+            Folder access requires Chrome or Edge browser.
+          </div>
+        )}
+      </div>
+
+      {/* Step 2: Upload Excel */}
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Step 2 — Upload Edited RAW_EXPORT.xlsx
+        </div>
+
+        {!parsed && (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => fileRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
+              isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/20"
+            }`}
+          >
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }}
+            />
+            {isParsing ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-9 h-9 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-muted-foreground">Reading Excel...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                  <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-sm">Drop RAW_EXPORT.xlsx here</p>
+                  <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {parseError && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+            {parseError}
+          </div>
+        )}
+
+        {parsed && parsed.totalChanges > 0 && (
+          <div className="space-y-3">
+            {/* Summary */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/10 border border-primary/25">
+              <svg className="w-5 h-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div className="flex-1">
+                <div className="text-sm font-medium text-foreground">{fileName}</div>
+                <div className="text-xs text-muted-foreground">
+                  {parsed.totalChanges} entities across {parsed.dwgNames.length} drawing{parsed.dwgNames.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+              <button onClick={reset} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Change
+              </button>
+            </div>
+
+            {/* DWG list */}
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Drawings to update
+              </div>
+              <div className="divide-y divide-border">
+                {parsed.dwgNames.map((dwg) => {
+                  const patches = parsed.byDwg.get(dwg)!;
+                  const result = dwgResults.find((r) => r.dwg === dwg);
+                  return (
+                    <div key={dwg} className="flex items-center gap-3 px-3 py-2.5">
+                      {result ? (
+                        <>
+                          {result.status === "pending" && <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />}
+                          {result.status === "processing" && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />}
+                          {result.status === "done" && (
+                            <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                          {result.status === "error" && (
+                            <svg className="w-4 h-4 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                        </>
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/20 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium font-mono truncate">{dwg}.dxf</div>
+                        {result?.status === "done" && (
+                          <div className="text-xs text-green-400">{result.replacements} values updated → {result.outputName}</div>
+                        )}
+                        {result?.status === "error" && (
+                          <div className="text-xs text-destructive">{result.error}</div>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground shrink-0">
+                        {patches.size} change{patches.size !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {parsed.errors.length > 0 && (
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs space-y-1">
+                {parsed.errors.map((e, i) => <div key={i}>{e}</div>)}
+              </div>
+            )}
+
+            {needsFolder && (
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Please select the folder with original DXF files above before applying.
+              </div>
+            )}
+
+            {allDone && (
+              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300 text-sm flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                All drawings updated successfully! Open <strong>{folderName}</strong> in AutoCAD — look for files prefixed with <strong>updated_</strong>.
+              </div>
+            )}
+
+            <div className="flex gap-3 flex-wrap">
               <button
-                onClick={handleSaveToFolder}
-                disabled={saveStatus === "saving"}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-60"
-                style={{
-                  background: saveStatus === "saved" ? "rgba(34,197,94,0.15)" : "rgba(99,102,241,0.12)",
-                  border: saveStatus === "saved" ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(99,102,241,0.4)",
-                  color: saveStatus === "saved" ? "#15803d" : "#6366f1",
-                }}
+                onClick={handleApply}
+                disabled={!canApply}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {saveStatus === "saving" ? (
-                  <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Saving...</>
-                ) : saveStatus === "saved" ? (
-                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> Saved to 📂 {(folderHandle as any).name} ✓</>
+                {isApplying ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Updating DXF Files...</>
                 ) : (
-                  <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg> Save DXF to 📂 {(folderHandle as any).name}</>
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Apply Changes to DXF Files
+                  </>
                 )}
               </button>
-            )}
-            <button onClick={reset}
-              className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors">
-              Upload Another
-            </button>
+              <button
+                onClick={reset}
+                disabled={isApplying}
+                className="px-5 py-2.5 border border-border rounded-lg font-medium text-sm hover:bg-muted/50 transition-colors disabled:opacity-40"
+              >
+                Reset
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

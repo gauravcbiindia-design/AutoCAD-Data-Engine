@@ -1,223 +1,264 @@
 /**
  * @copyright © 2026 G. Bharti. All rights reserved.
- * @description CAD Data Engine — Excel to DXF Converter Module
- * Reads engineer-edited Excel workbooks and regenerates valid DXF files
- * with block insertions and text entities for re-import into AutoCAD.
+ * @description CAD Data Engine — Excel to DXF Patch Module
+ *
+ * CORRECT APPROACH: Instead of generating DXF from scratch (which produces
+ * structurally invalid files AutoCAD cannot open), we READ the original DXF
+ * files and PATCH only the changed values in-place, then write back.
+ *
+ * This guarantees AutoCAD compatibility because the file structure, HEADER,
+ * TABLES, BLOCKS, OBJECTS sections all come from the original valid file.
+ * Only attribute values and text content are modified.
+ *
+ * Workflow:
+ *   1. User uploads edited RAW_EXPORT.xlsx
+ *   2. App reads DWG + HANDLE + Attribute_Tag + Attribute_Value columns
+ *   3. App groups changes by source DWG filename
+ *   4. For each DWG, user's original .dxf is read from the selected folder
+ *   5. App patches ATTRIB/TEXT/MTEXT entities by handle
+ *   6. App outputs "updated_{original}.dxf" — one per source drawing
+ *
  * Proprietary software. Unauthorised use strictly prohibited.
  */
 
 import * as XLSX from "xlsx";
 
-export interface ExcelBlockRow {
-  blockName: string;
-  layer: string;
-  x: number;
-  y: number;
-  z: number;
-  attributes: Record<string, string>;
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+/** One editable row read from RAW_EXPORT sheet */
+export interface RawExportRow {
+  dwg: string;           // source DXF filename (no extension)
+  handle: string;        // entity handle (hex string)
+  entityType: string;    // ATTRIB | TEXT | MTEXT | INSERT
+  block: string;         // parent block name (for ATTRIBs)
+  attributeTag: string;  // attribute tag name (ATTRIB only)
+  attributeValue: string;// attribute value to write back
+  rawText: string;       // text content (TEXT/MTEXT)
 }
 
-export interface ExcelTextRow {
-  type: string;
-  content: string;
-  layer: string;
-  x: number;
-  y: number;
-  z: number;
-  height: number;
-}
+/** Changes to apply to a single DXF file */
+export type DwgPatchMap = Map<
+  string,                    // entity handle (hex)
+  { tag: string; value: string; rawText: string; entityType: string }
+>;
 
-export interface ImportedExcelData {
-  blocks: ExcelBlockRow[];
-  texts: ExcelTextRow[];
+export interface ParsedExcelResult {
+  /** Map from DWG name (without .dxf) to its patch set */
+  byDwg: Map<string, DwgPatchMap>;
+  totalChanges: number;
+  dwgNames: string[];
   errors: string[];
 }
 
-export function parseExcelFile(buffer: ArrayBuffer): ImportedExcelData {
+// ── Excel parser ───────────────────────────────────────────────────────────────
+
+/**
+ * Reads an edited RAW_EXPORT.xlsx and builds a patch map grouped by DWG.
+ * Accepts either RAW_EXPORT.xlsx (RAW_EXPORT sheet) or any xlsx with those columns.
+ */
+export function parseRawExport(buffer: ArrayBuffer): ParsedExcelResult {
   const errors: string[] = [];
+  const byDwg = new Map<string, DwgPatchMap>();
+  let totalChanges = 0;
+
   const wb = XLSX.read(buffer, { type: "array" });
 
-  const blocks: ExcelBlockRow[] = [];
-  const texts: ExcelTextRow[] = [];
+  // Accept "RAW_EXPORT" sheet name (from our export) or first sheet
+  const sheetName = wb.SheetNames.includes("RAW_EXPORT")
+    ? "RAW_EXPORT"
+    : wb.SheetNames[0];
 
-  // Parse Blocks & Attributes sheet
-  const blockSheet = wb.Sheets["Blocks & Attributes"];
-  if (blockSheet) {
-    const rows: any[] = XLSX.utils.sheet_to_json(blockSheet, { defval: "" });
-    for (const row of rows) {
-      if (row["Note"]) continue;
-      const attrs: Record<string, string> = {};
-      Object.keys(row).forEach((key) => {
-        if (key.startsWith("ATTR: ")) {
-          attrs[key.replace("ATTR: ", "")] = String(row[key]);
-        }
-      });
-      blocks.push({
-        blockName: String(row["Block Name"] || "UNKNOWN"),
-        layer: String(row["Layer"] || "0"),
-        x: parseFloat(row["X Position"]) || 0,
-        y: parseFloat(row["Y Position"]) || 0,
-        z: parseFloat(row["Z Position"]) || 0,
-        attributes: attrs,
-      });
-    }
+  if (!sheetName) {
+    errors.push("Excel file has no sheets.");
+    return { byDwg, totalChanges, dwgNames: [], errors };
   }
 
-  // Parse Text & Annotations sheet
-  const textSheet = wb.Sheets["Text & Annotations"];
-  if (textSheet) {
-    const rows: any[] = XLSX.utils.sheet_to_json(textSheet, { defval: "" });
-    for (const row of rows) {
-      if (row["Note"]) continue;
-      texts.push({
-        type: String(row["Type"] || "TEXT"),
-        content: String(row["Content"] || ""),
-        layer: String(row["Layer"] || "0"),
-        x: parseFloat(row["X Position"]) || 0,
-        y: parseFloat(row["Y Position"]) || 0,
-        z: parseFloat(row["Z Position"]) || 0,
-        height: parseFloat(row["Text Height"]) || 2.5,
-      });
-    }
+  const ws = wb.Sheets[sheetName];
+  const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+  if (rows.length === 0) {
+    errors.push(`Sheet "${sheetName}" is empty.`);
+    return { byDwg, totalChanges, dwgNames: [], errors };
   }
 
-  if (!blockSheet && !textSheet) {
-    errors.push('Excel file must have sheets named "Blocks & Attributes" and/or "Text & Annotations".');
+  // Check required columns exist
+  const firstRow = rows[0];
+  const hasRequired = "DWG" in firstRow && "HANDLE" in firstRow;
+  if (!hasRequired) {
+    errors.push(
+      `Sheet "${sheetName}" must have DWG and HANDLE columns. ` +
+      `Found columns: ${Object.keys(firstRow).join(", ")}`
+    );
+    return { byDwg, totalChanges, dwgNames: [], errors };
   }
 
-  return { blocks, texts, errors };
+  for (const row of rows) {
+    // Skip header-like or empty rows
+    if (!row.DWG || !row.HANDLE) continue;
+
+    const dwg = String(row.DWG).trim().replace(/\.dxf$/i, "").replace(/\.dwg$/i, "");
+    const handle = String(row.HANDLE).trim().toUpperCase();
+    const entityType = String(row.Entity_Type || "").trim().toUpperCase();
+    const attrTag = String(row.Attribute_Tag || "").trim();
+    const attrValue = String(row.Attribute_Value ?? "").trim();
+    const rawText = String(row.Raw_Text ?? "").trim();
+
+    if (!handle || handle === "HANDLE") continue; // skip header row if repeated
+
+    if (!byDwg.has(dwg)) byDwg.set(dwg, new Map());
+    const patchMap = byDwg.get(dwg)!;
+
+    patchMap.set(handle, {
+      tag: attrTag,
+      value: attrValue,
+      rawText,
+      entityType,
+    });
+    totalChanges++;
+  }
+
+  const dwgNames = Array.from(byDwg.keys()).sort();
+  return { byDwg, totalChanges, dwgNames, errors };
 }
 
-export function generateDxf(data: ImportedExcelData): string {
-  const lines: string[] = [];
+// ── DXF patcher ────────────────────────────────────────────────────────────────
 
-  const sec = (name: string) => {
-    lines.push("  0", "SECTION", "  2", name);
-  };
-  const endsec = () => lines.push("  0", "ENDSEC");
-  const code = (c: number, v: string | number) => lines.push(`  ${c}`, String(v));
+/**
+ * Patches a raw DXF text string in-place.
+ *
+ * Algorithm:
+ *  - Scans the file as group-code pairs (code on line N, value on line N+1)
+ *  - Tracks the current entity (code 0) and current handle (code 5)
+ *  - When inside an ATTRIB or TEXT/MTEXT entity whose handle is in the patch
+ *    map, replaces the value line (code 1 = text/attribute value) with the
+ *    new value from Excel
+ *
+ * Returns the modified DXF text and a count of replacements made.
+ */
+export function patchDxfContent(
+  originalDxf: string,
+  patches: DwgPatchMap
+): { patched: string; replacements: number } {
+  if (patches.size === 0) return { patched: originalDxf, replacements: 0 };
 
-  // Collect unique layers
-  const layerSet = new Set(["0"]);
-  data.blocks.forEach((b) => layerSet.add(b.layer));
-  data.texts.forEach((t) => layerSet.add(t.layer));
+  // Split into lines preserving original line endings
+  const eol = originalDxf.includes("\r\n") ? "\r\n" : "\n";
+  const lines = originalDxf.split(/\r?\n/);
 
-  // HEADER
-  sec("HEADER");
-  code(9, "$ACADVER");
-  code(1, "AC1015");
-  code(9, "$INSUNITS");
-  code(70, 4);
-  endsec();
+  let replacements = 0;
+  let currentEntityType = "";
+  let currentHandle = "";
+  let waitingForCode1 = false; // true when we're in a patchable entity
 
-  // TABLES
-  sec("TABLES");
-  // LTYPE table
-  code(0, "TABLE");
-  code(2, "LTYPE");
-  code(70, 1);
-  code(0, "LTYPE");
-  code(2, "CONTINUOUS");
-  code(70, 0);
-  code(3, "Solid line");
-  code(72, 65);
-  code(73, 0);
-  code(40, 0);
-  code(0, "ENDTAB");
+  const out: string[] = [];
+  let i = 0;
 
-  // LAYER table
-  code(0, "TABLE");
-  code(2, "LAYER");
-  code(70, layerSet.size);
-  for (const layer of layerSet) {
-    code(0, "LAYER");
-    code(2, layer);
-    code(70, 0);
-    code(62, 7);
-    code(6, "CONTINUOUS");
-  }
-  code(0, "ENDTAB");
-  endsec();
+  while (i < lines.length) {
+    const codeLine = lines[i];
+    const valueLine = i + 1 < lines.length ? lines[i + 1] : "";
 
-  // ENTITIES
-  sec("ENTITIES");
+    const codeNum = parseInt(codeLine.trim(), 10);
 
-  let handle = 100;
-
-  // Write INSERT entities for blocks
-  for (const b of data.blocks) {
-    code(0, "INSERT");
-    code(5, handle++);
-    code(8, b.layer);
-    code(2, b.blockName);
-    code(10, b.x);
-    code(20, b.y);
-    code(30, b.z);
-    code(41, 1); // X scale
-    code(42, 1); // Y scale
-    code(43, 1); // Z scale
-    code(50, 0); // rotation
-
-    const attrKeys = Object.keys(b.attributes);
-    if (attrKeys.length > 0) {
-      code(66, 1); // attributes follow flag
-      for (const tag of attrKeys) {
-        code(0, "ATTRIB");
-        code(5, handle++);
-        code(8, b.layer);
-        code(10, b.x);
-        code(20, b.y);
-        code(30, b.z);
-        code(40, 2.5); // text height
-        code(1, b.attributes[tag]); // value
-        code(2, tag);               // tag
-        code(70, 0);
-        code(50, 0);
-      }
-      code(0, "SEQEND");
-      code(5, handle++);
-      code(8, b.layer);
+    if (isNaN(codeNum)) {
+      // Not a valid group code line — pass through
+      out.push(codeLine);
+      i++;
+      continue;
     }
-  }
 
-  // Write TEXT entities
-  for (const t of data.texts) {
-    if (t.type === "MTEXT") {
-      code(0, "MTEXT");
-      code(5, handle++);
-      code(8, t.layer);
-      code(10, t.x);
-      code(20, t.y);
-      code(30, t.z);
-      code(40, t.height || 2.5);
-      code(71, 1);
-      code(1, t.content);
-    } else {
-      code(0, "TEXT");
-      code(5, handle++);
-      code(8, t.layer);
-      code(10, t.x);
-      code(20, t.y);
-      code(30, t.z);
-      code(40, t.height || 2.5);
-      code(1, t.content);
+    // Group code 0 = entity type marker
+    if (codeNum === 0) {
+      currentEntityType = valueLine.trim().toUpperCase();
+      currentHandle = "";
+      waitingForCode1 = false;
+      out.push(codeLine, valueLine);
+      i += 2;
+      continue;
     }
+
+    // Group code 5 = handle
+    if (codeNum === 5) {
+      currentHandle = valueLine.trim().toUpperCase();
+      // Check if this handle is in our patch map and entity is patchable
+      const patchable =
+        currentEntityType === "ATTRIB" ||
+        currentEntityType === "TEXT" ||
+        currentEntityType === "MTEXT";
+      waitingForCode1 = patchable && patches.has(currentHandle);
+      out.push(codeLine, valueLine);
+      i += 2;
+      continue;
+    }
+
+    // Group code 1 = text/attribute value — replace if we're waiting
+    if (codeNum === 1 && waitingForCode1) {
+      const patch = patches.get(currentHandle)!;
+      // For ATTRIB: use attribute value; for TEXT/MTEXT: use raw text
+      const newValue =
+        currentEntityType === "ATTRIB"
+          ? patch.value
+          : patch.rawText || patch.value;
+
+      out.push(codeLine, newValue);
+      replacements++;
+      waitingForCode1 = false; // only replace the first code-1 per entity
+      i += 2;
+      continue;
+    }
+
+    // All other group codes — pass through unchanged
+    out.push(codeLine, valueLine);
+    i += 2;
   }
 
-  endsec();
-
-  // EOF
-  lines.push("  0", "EOF");
-
-  return lines.join("\n");
+  return { patched: out.join(eol), replacements };
 }
 
-export function downloadDxf(content: string, filename: string = "output.dxf") {
+// ── File read helpers ──────────────────────────────────────────────────────────
+
+/** Read a file from a FileSystemDirectoryHandle as text */
+export async function readDxfFromFolder(
+  folderHandle: FileSystemDirectoryHandle,
+  fileName: string
+): Promise<string> {
+  // Try exact name first, then with .dxf extension
+  const names = [fileName, fileName + ".dxf", fileName.replace(/\.dxf$/i, "") + ".dxf"];
+  for (const name of names) {
+    try {
+      const fh = await folderHandle.getFileHandle(name);
+      const file = await fh.getFile();
+      return await file.text();
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`File "${fileName}.dxf" not found in selected folder.`);
+}
+
+/** Write text back to folder as a new file */
+export async function writeUpdatedDxf(
+  folderHandle: FileSystemDirectoryHandle,
+  originalName: string,
+  content: string
+): Promise<string> {
+  const baseName = originalName.replace(/\.dxf$/i, "");
+  const outName = `updated_${baseName}.dxf`;
+  const fh = await folderHandle.getFileHandle(outName, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return outName;
+}
+
+/** Download a DXF string as a file in the browser */
+export function downloadDxf(content: string, filename: string) {
   const blob = new Blob([content], { type: "application/dxf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
