@@ -564,28 +564,20 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
 
             {result && (
               <>
-                <button onClick={() => exportEngineerData(result)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  ENGINEER_DATA.xlsx
-                </button>
                 <button onClick={() => exportRaw(result)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
+                  className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity text-sm">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  RAW_EXPORT.xlsx
+                  Download RAW_EXPORT.xlsx
                 </button>
                 <button onClick={() => exportRawCsv(result)}
-                  title="Export RAW_EXPORT as CSV — edit in Notepad / Excel, then upload back to patch DXFs"
                   className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium hover:opacity-90 transition-opacity text-sm"
                   style={{ background: "rgba(234,179,8,0.15)", border: "1px solid rgba(234,179,8,0.4)", color: "#ca8a04" }}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  RAW_EXPORT.csv
+                  Download RAW_EXPORT.csv
                 </button>
                 {folderHandle && (
                   <button
@@ -663,33 +655,22 @@ const CAT_STYLE: Record<string, { bg: string; text: string }> = {
 // ── Results Panel ─────────────────────────────────────────────────────────────
 
 function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCount: number }) {
-  const { stats, engineerRows, lineTokens, textReviewRows, drawingMetaRows } = result;
+  const { stats, rawRows } = result;
 
-  // Instrument types breakdown
-  const instrMap = new Map<string, number>();
-  engineerRows
-    .filter((r) => r.Category === "INSTRUMENT" && r.Instrument_Type)
-    .forEach((r) => instrMap.set(r.Instrument_Type, (instrMap.get(r.Instrument_Type) || 0) + 1));
-  const topInstrs = [...instrMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-
-  // Preview first 10 engineer rows
-  const preview = engineerRows.slice(0, 10);
+  const RAW_PREVIEW_COLS = ["DWG", "HANDLE", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Raw_Text"];
+  const preview = rawRows.slice(0, 15);
 
   return (
     <div className="space-y-5 border border-border rounded-xl p-5 bg-card">
       <h3 className="font-semibold text-base">Extraction Results</h3>
 
-      {/* Category stats grid */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* Simple stats */}
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Drawings",    value: doneCount,              color: "text-blue-300",   bg: "bg-blue-900/30" },
-          { label: "Lines",       value: stats.linesFound,       color: "text-green-300",  bg: "bg-green-900/30" },
-          { label: "Instruments", value: stats.instrumentsFound, color: "text-blue-300",   bg: "bg-blue-900/30" },
-          { label: "Equipment",   value: stats.equipmentFound,   color: "text-purple-300", bg: "bg-purple-900/30" },
-          { label: "OPC",         value: stats.opcFound,         color: "text-yellow-300", bg: "bg-yellow-900/25" },
-          { label: "Text Review", value: stats.textReview,       color: "text-orange-300", bg: "bg-orange-900/25" },
-          { label: "Line Tokens", value: lineTokens.length,      color: "text-teal-300",   bg: "bg-teal-900/30" },
-          { label: "Raw Entities",value: stats.totalEntities,    color: "text-slate-300",  bg: "bg-slate-700/40" },
+          { label: "Drawings",       value: doneCount,           bg: "bg-blue-900/30",   color: "text-blue-300" },
+          { label: "Total Rows",     value: stats.totalEntities, bg: "bg-primary/15",    color: "text-primary" },
+          { label: "Block / ATTRIB", value: stats.blockRows,     bg: "bg-teal-900/30",   color: "text-teal-300" },
+          { label: "Text / MTEXT",   value: stats.textRows,      bg: "bg-purple-900/30", color: "text-purple-300" },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
@@ -698,96 +679,51 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
         ))}
       </div>
 
-      {/* Instrument types found */}
-      {topInstrs.length > 0 && (
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Instrument Types Detected
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {topInstrs.map(([type, count]) => (
-              <span key={type} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium">
-                {type}
-                <span className="bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px]">{count}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ENGINEER_VISIBLE_DATA preview */}
+      {/* RAW data preview */}
       {preview.length > 0 && (
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            ENGINEER_VISIBLE_DATA Preview (first {preview.length} rows)
+            RAW_EXPORT Preview — first {preview.length} rows
           </h4>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
                 <tr>
-                  {["DWG", "Category", "Line_Number", "Instrument_Display", "Equipment_Tag", "OPC_Display", "Visible_Text", "Status"].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                  {RAW_PREVIEW_COLS.map((h) => (
+                    <th key={h} className="px-2 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {preview.map((row, i) => {
-                  const cs = CAT_STYLE[row.Category] || { bg: "bg-muted", text: "text-muted-foreground" };
-                  return (
-                    <tr key={i} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-3 py-2 font-medium max-w-[120px] truncate">{row.DWG}</td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${cs.bg} ${cs.text}`}>
-                          {row.Category}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-green-700">{row.Line_Number}</td>
-                      <td className="px-3 py-2 font-semibold text-blue-700">{row.Instrument_Display}</td>
-                      <td className="px-3 py-2 text-purple-700">{row.Equipment_Tag}</td>
-                      <td className="px-3 py-2 text-yellow-700 max-w-[140px] truncate">{row.OPC_Display}</td>
-                      <td className="px-3 py-2 max-w-[160px] truncate text-muted-foreground">{row.Visible_Text}</td>
-                      <td className="px-3 py-2">
-                        {row.Status && (
-                          <span className="px-1.5 py-0.5 bg-muted rounded text-[10px]">{row.Status}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {preview.map((row: any, i: number) => (
+                  <tr key={i} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-2 py-1.5 font-medium max-w-[100px] truncate">{row.DWG}</td>
+                    <td className="px-2 py-1.5 font-mono text-primary/70">{row.HANDLE}</td>
+                    <td className="px-2 py-1.5">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">{row.Entity_Type}</span>
+                    </td>
+                    <td className="px-2 py-1.5 max-w-[100px] truncate text-muted-foreground">{row.BLOCK}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{row.Layer}</td>
+                    <td className="px-2 py-1.5 font-mono text-teal-400">{row.Attribute_Tag}</td>
+                    <td className="px-2 py-1.5 max-w-[140px] truncate text-foreground font-medium">{row.Attribute_Value}</td>
+                    <td className="px-2 py-1.5 max-w-[160px] truncate text-muted-foreground">{row.Raw_Text}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-            {engineerRows.length > 10 && (
+            {rawRows.length > 15 && (
               <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border">
-                Showing 10 of {engineerRows.length} engineer rows · Full data in ENGINEER_DATA.xlsx
+                Showing 15 of {rawRows.length} rows — full data in downloaded file
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Output file description */}
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-          <div className="font-semibold text-green-800 mb-1">ENGINEER_DATA.xlsx</div>
-          <div className="text-green-700 space-y-0.5">
-            <div>📋 Sheet 1: ENGINEER_VISIBLE_DATA — {engineerRows.length} rows</div>
-            <div>🔑 Sheet 2: LINE_TOKENS — {lineTokens.length} tokens</div>
-            <div>🔍 Sheet 3: TEXT_REVIEW — {textReviewRows.length} items</div>
-            <div>📌 Sheet 4: DRAWING_META — {drawingMetaRows.length} items</div>
-          </div>
-        </div>
-        <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-          <div className="font-semibold text-orange-800 mb-1">RAW_EXPORT.xlsx</div>
-          <div className="text-orange-700 space-y-0.5">
-            <div>📦 Sheet 1: RAW_EXPORT — {stats.totalEntities} entities</div>
-            <div>📊 Sheet 2: Export_Stats</div>
-            <div className="mt-1 text-orange-600">All original data preserved untouched</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-xs text-muted-foreground border-t border-border pt-3">
-        ✅ Sorted: DWG → Category → Line_Number / Instrument_Tag → Handle · LINE_TOKENS for token-based filtering
+      {/* Column list */}
+      <div className="p-3 rounded-lg bg-muted/30 border border-border text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">All columns in file: </span>
+        <span className="font-mono">DWG · HANDLE · Entity_Type · BLOCK · Layer · X · Y · Attribute_Tag · Attribute_Value · Raw_Text · Detected_Type</span>
       </div>
     </div>
   );
