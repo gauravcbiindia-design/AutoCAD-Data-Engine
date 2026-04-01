@@ -357,6 +357,25 @@ export function extractEngineeringData(
           Raw_Text: "", Detected_Type: detectedType,
         });
       }
+
+      // If this block contains TOP/BOTTOM/MID attributes, add one combined
+      // INSTRUMENT summary row (e.g. "PG-2104") so users can filter easily
+      const hasInstrAttr = attrs.some(
+        (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
+      );
+      if (hasInstrAttr) {
+        const instrMatch = detectInstrument(attrs);
+        if (instrMatch) {
+          rawRows.push({
+            DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
+            BLOCK: blockName, Layer: block.layer,
+            X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
+            Attribute_Tag: "INSTRUMENT",
+            Attribute_Value: instrMatch.display,
+            Raw_Text: "", Detected_Type: "INSTRUMENTS",
+          });
+        }
+      }
     }
 
     if (attrs.length === 0) continue; // no engineering data to classify
