@@ -347,7 +347,7 @@ export function extractEngineeringData(
           BLOCK: blockName, Layer: block.layer,
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: attr.value,
-          Raw_Text: attr.value, Detected_Type: classified.textClass,
+          Raw_Text: "", Detected_Type: classified.textClass,
         });
       }
     }
