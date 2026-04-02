@@ -148,12 +148,9 @@ export function exportRaw(result: ExtractionResult) {
   XLSX.writeFile(buildRawWorkbook(result), `RAW_EXPORT_${date}.xlsx`);
 }
 
-/** Export RAW_EXPORT data as a plain CSV file (edit in Notepad/Excel, upload back to patch DXFs) */
-export function exportRawCsv(result: ExtractionResult) {
-  const date = new Date().toISOString().slice(0, 10);
+/** Build a CSV string from RAW_EXPORT data (no file I/O — pure string) */
+export function buildRawCsvString(result: ExtractionResult): string {
   const rows = result.rawRows;
-  if (rows.length === 0) return;
-
   const headers = RAW_COLUMNS;
 
   const escape = (v: unknown) => {
@@ -168,8 +165,15 @@ export function exportRawCsv(result: ExtractionResult) {
     headers.join(","),
     ...rows.map((row: any) => headers.map((h) => escape(row[h] ?? "")).join(",")),
   ];
+  return lines.join("\r\n");
+}
 
-  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+/** Export RAW_EXPORT data as a plain CSV file (no background process — safe for AutoCAD workflows) */
+export function exportRawCsv(result: ExtractionResult) {
+  if (result.rawRows.length === 0) return;
+  const date = new Date().toISOString().slice(0, 10);
+  const csv = buildRawCsvString(result);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
