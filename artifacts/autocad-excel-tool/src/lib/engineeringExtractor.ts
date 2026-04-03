@@ -66,6 +66,7 @@ export interface RawRow {
   Raw_Text: string;
   Detected_Type: string;
   Full_Tag: string;       // Reconstructed instrument tag e.g. "TT-2411" (blank if not applicable)
+  Context_Tag: string;   // Nearest instrument/line-number tag by X,Y proximity (for TEXT/NOTE rows)
 }
 
 export interface ExtractionResult {
@@ -418,7 +419,7 @@ export function extractEngineeringData(
         BLOCK: blockName, Layer: block.layer,
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
         Attribute_Tag: "", Attribute_Value: "", Raw_Text: "", Detected_Type: "BLOCK",
-        Full_Tag: "",
+        Full_Tag: "", Context_Tag: "",
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -479,7 +480,7 @@ export function extractEngineeringData(
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
-          Full_Tag: blockFullTag,
+          Full_Tag: blockFullTag, Context_Tag: "",
         });
       }
 
@@ -498,7 +499,7 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
-            Full_Tag: instrMatch.display,
+            Full_Tag: instrMatch.display, Context_Tag: "",
           });
         }
       }
@@ -524,7 +525,7 @@ export function extractEngineeringData(
             Attribute_Tag: "EQUIPMENT",
             Attribute_Value: eqDisplay,
             Raw_Text: "", Detected_Type: "EQUIPMENT",
-            Full_Tag: eqDisplay,
+            Full_Tag: eqDisplay, Context_Tag: "",
           });
         }
       }
@@ -644,7 +645,7 @@ export function extractEngineeringData(
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
       Raw_Text: text.content, Detected_Type: rawDetectedType,
-      Full_Tag: "",
+      Full_Tag: "", Context_Tag: "",
     });
 
     const cleanVal = classified.clean;
@@ -722,6 +723,45 @@ export function extractEngineeringData(
     row.Remarks = `${classified.textClass} — verify`;
     textReviewRows.push(row);
   }
+
+  // ── Spatial Context_Tag: nearest instrument / line-number lookup ─────────────
+  // For TEXT, NOTE, ALARM, INTERLOCK, COMPONENTS, SPEC rows we find the closest
+  // known instrument tag or line-number by Euclidean distance on (X, Y).
+  // "Anchor" rows are:  INSTRUMENTS summary rows (Attribute_Tag === "INSTRUMENT")
+  //                     and LINE_NUMBER rows with a non-blank value.
+
+  const CONTEXT_TYPES = new Set(["TEXT", "NOTE", "ALARM", "INTERLOCK", "COMPONENTS", "SPEC", "LABEL"]);
+
+  interface Anchor { x: number; y: number; tag: string; }
+  const anchors: Anchor[] = rawRows
+    .filter((r) => {
+      if (r.Detected_Type === "INSTRUMENTS" && r.Attribute_Tag === "INSTRUMENT") return true;
+      if (r.Detected_Type === "LINE_NUMBER") {
+        const v = (r.Attribute_Value || r.Raw_Text || "").trim();
+        return v.length > 0;
+      }
+      return false;
+    })
+    .map((r) => ({
+      x: r.X, y: r.Y,
+      tag: r.Attribute_Value || r.Raw_Text || r.Full_Tag || "",
+    }));
+
+  if (anchors.length > 0) {
+    for (const row of rawRows) {
+      if (!CONTEXT_TYPES.has(row.Detected_Type)) continue;
+      let minDist = Infinity;
+      let nearest = "";
+      for (const a of anchors) {
+        const dx = row.X - a.x;
+        const dy = row.Y - a.y;
+        const d = dx * dx + dy * dy;   // squared distance — avoids sqrt
+        if (d < minDist) { minDist = d; nearest = a.tag; }
+      }
+      row.Context_Tag = nearest;
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return { rawRows, engineerRows, lineTokens, textReviewRows, drawingMetaRows };
 }
