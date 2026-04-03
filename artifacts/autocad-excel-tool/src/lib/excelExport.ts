@@ -150,7 +150,15 @@ export function exportRaw(result: ExtractionResult) {
 
 /** Build a CSV string from RAW_EXPORT data (no file I/O — pure string) */
 export function buildRawCsvString(result: ExtractionResult): string {
-  const rows = result.rawRows;
+  const SKIP_VALUES = new Set(["", "n/a", "none", "na"]);
+
+  const rows = result.rawRows.filter((row: any) => {
+    const val = String(row.Attribute_Value ?? "").trim().toLowerCase();
+    const txt = String(row.Raw_Text ?? "").trim().toLowerCase();
+    // Keep rows that have a meaningful value in either field
+    return !SKIP_VALUES.has(val) || !SKIP_VALUES.has(txt);
+  });
+
   const headers = RAW_COLUMNS;
 
   const escape = (v: unknown) => {
