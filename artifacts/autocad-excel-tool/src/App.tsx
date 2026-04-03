@@ -196,7 +196,7 @@ function App() {
                 CAD Data Engine
               </h1>
               <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.6)" }}>
-                Bulk extract blocks, attributes & classified text from AutoCAD drawings · Export to structured Excel
+                Bulk extract blocks, attributes & classified text from DXF drawings · Export to structured CSV
               </p>
             </div>
 
@@ -935,7 +935,7 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">4.</span>
-            <span>The app overwrites the <strong className="text-foreground">original .dxf files</strong> in-place — open them directly in AutoCAD, no rename needed</span>
+            <span>The app overwrites the <strong className="text-foreground">original .dxf files</strong> in-place — open them directly in your CAD application, no rename needed</span>
           </div>
         </div>
       </div>
@@ -1120,7 +1120,7 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                 </svg>
-                All drawings updated successfully! Original DXF files in <strong>{folderName}</strong> have been replaced in-place — open them directly in AutoCAD.
+                All drawings updated successfully! Original DXF files in <strong>{folderName}</strong> have been replaced in-place — open them directly in your CAD application.
               </div>
             )}
 
