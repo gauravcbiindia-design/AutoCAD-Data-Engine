@@ -110,6 +110,7 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   MV:"Motor Valve", SDV:"Shutdown Valve", BDV:"Blowdown Valve",
   MOV:"Motor Operated Valve", SOV:"Solenoid Valve",
   HS:"Hand Switch", HIC:"Hand Indicating Controller",
+  XZSOC:"Instrument (XZSOC)",
   ZT:"Position Transmitter", ZI:"Position Indicator",
   ST:"Speed Transmitter", SI:"Speed Indicator",
   VT:"Vibration Transmitter", VI:"Vibration Indicator",
