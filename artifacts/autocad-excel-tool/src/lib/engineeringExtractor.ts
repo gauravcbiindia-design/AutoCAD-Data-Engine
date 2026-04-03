@@ -442,6 +442,17 @@ export function extractEngineeringData(
       const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs);
       const blockFullTag = blockInstrMatch?.display || "";
 
+      // Attribute tags that hold the instrument NUMBER/LOOP in P&ID blocks
+      // If blank → still keep in CSV so engineer can fill in the missing number
+      const INSTR_NUMBER_ATTR_TAGS = new Set([
+        "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
+        "TAG", "ITEM", "ITEM_NO", "MID", "MIDATTR", "LOOP", "LOOP_NO",
+      ]);
+      // Block has an instrument type in TOP/FUNCTN etc. (engineer needs to fill BOTTOM)
+      const blockHasInstrType = !blockIsTitleBlock && attrs.some(
+        (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim())
+      );
+
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
         const valTrim = attr.value.trim();
@@ -459,8 +470,11 @@ export function extractEngineeringData(
         const isInterlockValue = isInterlockCode(valTrim);
         // 3–4 digit standalone numbers = instrument loop numbers split from their tag
         const isInstrNum      = isInstrumentNumber(valTrim);
+        // Blank NUMBER/BOTTOM/TAGNO attr in an instrument block → keep for engineer to fill in
+        const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock  ? "TITLE_BLOCK"
+                           : isBlankInstrSlot  ? "INSTRUMENTS"
                            : isInstrAttr      ? "INSTRUMENTS"
                            : isOpcAttr        ? "OPC"
                            : isEquipAttr      ? "EQUIPMENT"
