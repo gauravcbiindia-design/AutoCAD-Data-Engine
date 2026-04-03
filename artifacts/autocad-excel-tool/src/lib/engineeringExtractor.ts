@@ -487,10 +487,10 @@ export function extractEngineeringData(
     const classified = classifyText(text.content);
     const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
 
-    // TEXT / MTEXT rows always labelled "TEXT" unless they are OPC or LINE_NUMBER
-    // — this lets engineers filter all annotation rows as one group
+    // TEXT / MTEXT rows labelled by category so engineers can filter each group
     const rawDetectedType = isOpcText                              ? "OPC"
                           : classified.textClass === "LINE_NUMBER" ? "LINE_NUMBER"
+                          : classified.textClass === "NOTE"        ? "NOTE"
                           :                                          "TEXT";
 
     rawRows.push({
