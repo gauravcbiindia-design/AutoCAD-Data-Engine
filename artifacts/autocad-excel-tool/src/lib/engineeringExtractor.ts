@@ -109,6 +109,9 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   BV:"Ball Valve", GV:"Gate Valve", CV:"Check Valve",
   MV:"Motor Valve", SDV:"Shutdown Valve", BDV:"Blowdown Valve",
   MOV:"Motor Operated Valve", SOV:"Solenoid Valve",
+  GATE:"Gate Valve", BALL:"Ball Valve", GLOBE:"Globe Valve",
+  CHECK:"Check Valve", BUTTERFLY:"Butterfly Valve", NEEDLE:"Needle Valve",
+  PLUG:"Plug Valve", DIAPHRAGM:"Diaphragm Valve",
   HS:"Hand Switch", HIC:"Hand Indicating Controller",
   XZSOC:"Instrument (XZSOC)",
   ZT:"Position Transmitter", ZI:"Position Indicator",
@@ -380,7 +383,7 @@ export function extractEngineeringData(
         const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
         // treat this row as INSTRUMENTS — UC and other non-instrument codes stay as-is
-        const isInstrValue = valTrim.length >= 2 && valTrim.length <= 5 && isInstrumentType(valTrim);
+        const isInstrValue = valTrim.length >= 2 && valTrim.length <= 12 && isInstrumentType(valTrim);
         const classified   = classifyText(attr.value);
         const detectedType = isInstrAttr   ? "INSTRUMENTS"
                            : isOpcAttr     ? "OPC"
