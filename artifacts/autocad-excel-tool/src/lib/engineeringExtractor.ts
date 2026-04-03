@@ -65,6 +65,7 @@ export interface RawRow {
   Attribute_Value: string;
   Raw_Text: string;
   Detected_Type: string;
+  Full_Tag: string;       // Reconstructed instrument tag e.g. "TT-2411" (blank if not applicable)
 }
 
 export interface ExtractionResult {
@@ -408,6 +409,7 @@ export function extractEngineeringData(
         BLOCK: blockName, Layer: block.layer,
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
         Attribute_Tag: "", Attribute_Value: "", Raw_Text: "", Detected_Type: "BLOCK",
+        Full_Tag: "",
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -421,6 +423,11 @@ export function extractEngineeringData(
 
       // Equipment tag pattern: EQLINE1, EQNAME1, EQNAME2, EQNAME3, EQNO, EQTAG etc.
       const EQUIPMENT_TAG_RE = /^EQ/i;
+
+      // Pre-compute full instrument tag for this block (e.g. "TT-2411")
+      // so every attribute row can reference which instrument it belongs to
+      const blockInstrMatch = detectInstrument(attrs);
+      const blockFullTag = blockInstrMatch?.display || "";
 
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
@@ -459,6 +466,7 @@ export function extractEngineeringData(
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
+          Full_Tag: blockFullTag,
         });
       }
 
@@ -477,6 +485,7 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
+            Full_Tag: instrMatch.display,
           });
         }
       }
@@ -502,6 +511,7 @@ export function extractEngineeringData(
             Attribute_Tag: "EQUIPMENT",
             Attribute_Value: eqDisplay,
             Raw_Text: "", Detected_Type: "EQUIPMENT",
+            Full_Tag: eqDisplay,
           });
         }
       }
@@ -621,6 +631,7 @@ export function extractEngineeringData(
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
       Raw_Text: text.content, Detected_Type: rawDetectedType,
+      Full_Tag: "",
     });
 
     const cleanVal = classified.clean;

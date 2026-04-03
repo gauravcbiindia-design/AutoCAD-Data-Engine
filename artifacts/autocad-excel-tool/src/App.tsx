@@ -682,7 +682,7 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
     { label: "TEXT",        value: typeCounts["TEXT"] ?? 0,               bg: "bg-slate-700/40",  color: "text-slate-300" },
   ];
 
-  const RAW_PREVIEW_COLS = ["DWG", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Raw_Text", "Detected_Type"];
+  const RAW_PREVIEW_COLS = ["DWG", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Full_Tag", "Raw_Text", "Detected_Type"];
   const preview = rawRows.slice(0, 20);
 
   return (
