@@ -154,12 +154,26 @@ export function buildRawCsvString(result: ExtractionResult): string {
   // These detected types are always kept regardless of blank/N/A values
   const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS"]);
 
-  const rows = result.rawRows.filter((row: any) => {
+  const filtered = result.rawRows.filter((row: any) => {
     if (ALWAYS_KEEP.has(String(row.Detected_Type ?? ""))) return true;
     const val = String(row.Attribute_Value ?? "").trim().toLowerCase();
     const txt = String(row.Raw_Text ?? "").trim().toLowerCase();
-    // Keep rows that have a meaningful value in either field
     return !SKIP_VALUES.has(val) || !SKIP_VALUES.has(txt);
+  });
+
+  // Deduplicate line numbers — same line number from any source (attribute, TEXT, MTEXT)
+  // should appear only once in the CSV
+  const seenLineNumbers = new Set<string>();
+  const rows = filtered.filter((row: any) => {
+    const type = String(row.Detected_Type ?? "");
+    if (type !== "LINE_NUMBER") return true;
+    const lineVal = (
+      String(row.Attribute_Value ?? "").trim() ||
+      String(row.Raw_Text ?? "").trim()
+    ).toUpperCase();
+    if (!lineVal || seenLineNumbers.has(lineVal)) return false;
+    seenLineNumbers.add(lineVal);
+    return true;
   });
 
   const headers = RAW_COLUMNS;
