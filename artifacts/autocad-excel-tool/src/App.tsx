@@ -5,7 +5,7 @@
  * or use of this software, via any medium, is strictly prohibited.
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { parseDxf } from "@/lib/dxfParser";
 import {
   extractEngineeringData,
@@ -66,6 +66,59 @@ async function writeTextToFolder(
 
 type Tab = "extract" | "excel-to-dxf";
 
+// ── Cover / Splash page ───────────────────────────────────────────────────────
+
+function CoverPage({ onEnter }: { onEnter: () => void }) {
+  const [visible, setVisible] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 60);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleEnter = () => {
+    setLeaving(true);
+    setTimeout(onEnter, 600);
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center transition-opacity duration-600 ${
+        leaving ? "opacity-0" : visible ? "opacity-100" : "opacity-0"
+      }`}
+      style={{ background: "hsl(216 28% 10%)" }}
+    >
+      <div className="w-full flex items-center justify-center px-2 pt-4 pb-3">
+        <img
+          src="/cover2.png"
+          alt="CAD Data Engine — Gaurav Bharti"
+          className="w-full max-w-5xl"
+          style={{ maxHeight: "calc(100svh - 64px)", width: "100%", height: "auto", display: "block" }}
+        />
+      </div>
+      <div className="w-full flex justify-center pb-6 shrink-0">
+        <button
+          onClick={handleEnter}
+          className="flex items-center gap-2 px-8 py-2.5 rounded-lg font-semibold text-sm tracking-wide transition-all duration-200 hover:scale-105 active:scale-95"
+          style={{
+            background: "linear-gradient(135deg, #0077b6 0%, #023e8a 100%)",
+            color: "#fff",
+            boxShadow: "0 0 24px rgba(0,119,182,0.45), 0 4px 16px rgba(0,0,0,0.2)",
+          }}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Launch
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type FileStatus = "pending" | "processing" | "done" | "error";
 
@@ -81,8 +134,11 @@ interface FileEntry {
 // ── App shell ─────────────────────────────────────────────────────────────────
 
 function App() {
+  const [showCover, setShowCover] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("extract");
   const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
+
+  if (showCover) return <CoverPage onEnter={() => setShowCover(false)} />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
