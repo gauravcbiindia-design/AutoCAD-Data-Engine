@@ -22,110 +22,92 @@ export default function ExcelOutput() {
           className="font-display tracking-tight mb-[4vh]"
           style={{ fontSize: "4.2vw", fontWeight: 700, color: "#e2ecf5", lineHeight: 1.1 }}
         >
-          Two Structured
-          <span style={{ color: "#00b4d8" }}> Excel Workbooks</span>
+          One Structured
+          <span style={{ color: "#00b4d8" }}> CSV Export</span>
         </div>
-        <div className="grid grid-cols-2 gap-[3vw] flex-1" style={{ maxHeight: "58vh" }}>
+        <div className="grid grid-cols-2 gap-[3vw] flex-1" style={{ maxHeight: "60vh" }}>
+          {/* Left: RAW_EXPORT.csv */}
           <div
             className="rounded-2xl px-[3vw] py-[3vh] flex flex-col justify-between"
             style={{ background: "rgba(0,119,182,0.15)", border: "1px solid rgba(0,180,216,0.30)" }}
           >
             <div>
               <div
-                className="font-display mb-[1vh]"
+                className="font-display mb-[0.5vh]"
                 style={{ fontSize: "2.2vw", color: "#00b4d8", fontWeight: 700 }}
               >
-                ENGINEER_DATA.xlsx
+                RAW_EXPORT.csv
               </div>
               <div
                 className="font-body mb-[2.5vh]"
-                style={{ fontSize: "1.5vw", color: "#7a9ab8", fontWeight: 300 }}
+                style={{ fontSize: "1.4vw", color: "#7a9ab8", fontWeight: 300 }}
               >
-                Structured, classified engineering data — ready for handover.
+                Every extracted entity — open in Excel and filter by category instantly.
               </div>
               <div className="flex flex-col gap-[1.2vh]">
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#2dc653" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    ENGINEER_VISIBLE_DATA — all 5 categories
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#2dc653" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    LINE_TOKENS — filterable pipe token breakdown
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#2dc653" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    TEXT_REVIEW — unclassified items for manual check
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#2dc653" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    DRAWING_META — source file and stats per drawing
-                  </span>
-                </div>
+                {[
+                  { label: "Detected_Type", desc: "Category for each row — filter to any type in one click" },
+                  { label: "Full_Tag", desc: "Reconstructed tag (e.g. TT-2411) — fill blanks to update DXF" },
+                  { label: "Context_Tag", desc: "Nearest instrument/line — links TEXT rows to their drawing context" },
+                  { label: "Attribute_Value", desc: "Edit this column, upload CSV → changes written back to DXF" },
+                  { label: "Drawing_Name", desc: "Source DXF file tagged on every row for traceability" },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-start gap-[1vw]">
+                    <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0 mt-[0.8vh]" style={{ background: "#00b4d8" }} />
+                    <span className="font-body" style={{ fontSize: "1.35vw", color: "#a8c8e0" }}>
+                      <span style={{ color: "#00b4d8", fontWeight: 600 }}>{item.label}</span>
+                      {" — "}{item.desc}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
             <div
               className="font-body mt-[2vh] px-[1.5vw] py-[1.2vh] rounded-lg"
-              style={{ fontSize: "1.3vw", color: "#00b4d8", background: "rgba(0,180,216,0.10)", border: "1px solid rgba(0,180,216,0.2)" }}
+              style={{ fontSize: "1.2vw", color: "#00b4d8", background: "rgba(0,180,216,0.10)", border: "1px solid rgba(0,180,216,0.2)" }}
             >
-              Primary engineering deliverable
+              Primary engineering deliverable — CSV, universal, no macros needed
             </div>
           </div>
+
+          {/* Right: DXF writeback */}
           <div
             className="rounded-2xl px-[3vw] py-[3vh] flex flex-col justify-between"
             style={{ background: "rgba(45,198,83,0.08)", border: "1px solid rgba(45,198,83,0.25)" }}
           >
             <div>
               <div
-                className="font-display mb-[1vh]"
+                className="font-display mb-[0.5vh]"
                 style={{ fontSize: "2.2vw", color: "#2dc653", fontWeight: 700 }}
               >
-                RAW_EXPORT.xlsx
+                DXF Write-Back
               </div>
               <div
                 className="font-body mb-[2.5vh]"
-                style={{ fontSize: "1.5vw", color: "#7a9ab8", fontWeight: 300 }}
+                style={{ fontSize: "1.4vw", color: "#7a9ab8", fontWeight: 300 }}
               >
-                Unfiltered raw extraction — every entity, every attribute.
+                Edit the CSV — upload it back — changes applied to the original DXF.
               </div>
               <div className="flex flex-col gap-[1.2vh]">
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#00b4d8" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    All block entities with every attribute field
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#00b4d8" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    Complete text entities from all drawing layers
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#00b4d8" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    Source drawing filename tagged on every row
-                  </span>
-                </div>
-                <div className="flex items-center gap-[1vw]">
-                  <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#00b4d8" }} />
-                  <span className="font-body" style={{ fontSize: "1.5vw", color: "#a8c8e0" }}>
-                    Audit trail and data verification reference
-                  </span>
-                </div>
+                {[
+                  "Edit Attribute_Value cells in Excel",
+                  "Save CSV and upload via Apply Changes",
+                  "Corrected DXF downloaded instantly",
+                  "Changing Full_Tag does NOT affect DXF",
+                  "Batch update multiple drawings at once",
+                ].map((txt) => (
+                  <div key={txt} className="flex items-center gap-[1vw]">
+                    <div className="w-[0.6vw] h-[0.6vw] rounded-full shrink-0" style={{ background: "#2dc653" }} />
+                    <span className="font-body" style={{ fontSize: "1.35vw", color: "#a8c8e0" }}>{txt}</span>
+                  </div>
+                ))}
               </div>
             </div>
             <div
               className="font-body mt-[2vh] px-[1.5vw] py-[1.2vh] rounded-lg"
-              style={{ fontSize: "1.3vw", color: "#2dc653", background: "rgba(45,198,83,0.08)", border: "1px solid rgba(45,198,83,0.2)" }}
+              style={{ fontSize: "1.2vw", color: "#2dc653", background: "rgba(45,198,83,0.08)", border: "1px solid rgba(45,198,83,0.2)" }}
             >
-              Complete audit and verification record
+              Round-trip: DXF → CSV → Edit → Updated DXF
             </div>
           </div>
         </div>

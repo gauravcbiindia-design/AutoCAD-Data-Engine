@@ -1,4 +1,16 @@
 export default function FiveCategories() {
+  const categories = [
+    { label: "LINE_NUMBER",  color: "#2dc653",  bg: "rgba(45,198,83,0.10)",   border: "rgba(45,198,83,0.30)",   example: "6\"-N-602-2209-B1A-H",  desc: "Pipe & process line numbers — full format including insulation suffix." },
+    { label: "INSTRUMENTS",  color: "#00b4d8",  bg: "rgba(0,180,216,0.10)",   border: "rgba(0,180,216,0.30)",   example: "TT-2411, PI-2101, PG",   desc: "Instrument tags via TOP/BOTTOM, FUNCTN, or block name detection." },
+    { label: "EQUIPMENT",    color: "#b46fff",  bg: "rgba(180,100,255,0.10)", border: "rgba(180,100,255,0.30)", example: "V-101, P-201A, K-301",   desc: "Vessels, pumps, compressors, HX — identified by block name patterns." },
+    { label: "COMPONENTS",  color: "#14b8a6",  bg: "rgba(20,184,166,0.10)",  border: "rgba(20,184,166,0.30)",  example: "GATE, BALL, CHECK valve", desc: "In-line valve bodies and fittings." },
+    { label: "OPC",          color: "#f5c518",  bg: "rgba(245,197,24,0.10)",  border: "rgba(245,197,24,0.30)",  example: "FROM / TO connector tags", desc: "Off-page connectors & tie-ins — links drawings together." },
+    { label: "ALARM",        color: "#f87171",  bg: "rgba(248,113,113,0.10)", border: "rgba(248,113,113,0.30)", example: "H, L, HH, LL, HHH, LLL",  desc: "Alarm set-point indicators on instrument bubbles." },
+    { label: "INTERLOCK",    color: "#f472b6",  bg: "rgba(244,114,182,0.10)", border: "rgba(244,114,182,0.30)", example: "Z, I, IL, ESD, SIS",       desc: "Safety interlock and shutdown system references." },
+    { label: "SPEC",         color: "#a78bfa",  bg: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.30)", example: "A2A, D1D, B1A-H",         desc: "Piping specification codes including class & insulation." },
+    { label: "NOTE / TEXT",  color: "#fb923c",  bg: "rgba(251,146,60,0.10)",  border: "rgba(251,146,60,0.30)",  example: "General Notes, MIN., NNF",  desc: "Free text — spatially linked to nearest instrument or line via Context_Tag." },
+  ];
+
   return (
     <div className="relative w-screen h-screen overflow-hidden" style={{ background: "#0b1624" }}>
       <div
@@ -11,101 +23,52 @@ export default function FiveCategories() {
         className="absolute left-0 top-0 bottom-0 w-[0.5vw]"
         style={{ background: "linear-gradient(to bottom, #00b4d8, #0077b6)" }}
       />
-      <div className="relative z-10 flex h-full flex-col px-[8vw] py-[7vh]">
+      <div className="relative z-10 flex h-full flex-col px-[6vw] py-[5vh]">
         <div
-          className="font-body tracking-[0.2em] uppercase mb-[1vh]"
-          style={{ fontSize: "1.2vw", color: "#00b4d8", fontWeight: 500 }}
+          className="font-body tracking-[0.2em] uppercase mb-[0.5vh]"
+          style={{ fontSize: "1.1vw", color: "#00b4d8", fontWeight: 500 }}
         >
           Intelligence Built In
         </div>
         <div
-          className="font-display tracking-tight mb-[4vh]"
-          style={{ fontSize: "4.2vw", fontWeight: 700, color: "#e2ecf5", lineHeight: 1.1 }}
+          className="font-display tracking-tight mb-[2.5vh]"
+          style={{ fontSize: "3.8vw", fontWeight: 700, color: "#e2ecf5", lineHeight: 1.1 }}
         >
-          5 Engineering Categories
+          9 Engineering Categories
           <span style={{ color: "#00b4d8" }}> — Auto-Classified</span>
         </div>
-        <div className="grid grid-cols-5 gap-[1.5vw] flex-1" style={{ maxHeight: "58vh" }}>
-          <div
-            className="rounded-2xl px-[1.5vw] py-[2.5vh] flex flex-col justify-between"
-            style={{ background: "rgba(45,198,83,0.10)", border: "1px solid rgba(45,198,83,0.30)" }}
-          >
-            <div>
-              <div className="font-display" style={{ fontSize: "1.8vw", color: "#2dc653", fontWeight: 700, letterSpacing: "0.05em" }}>
-                LINE
+
+        <div className="grid gap-[0.9vw]" style={{ gridTemplateColumns: "repeat(3, 1fr)", flex: 1, alignContent: "start" }}>
+          {categories.map((c) => (
+            <div
+              key={c.label}
+              className="rounded-xl px-[1.4vw] py-[1.5vh] flex flex-col justify-between"
+              style={{ background: c.bg, border: `1px solid ${c.border}` }}
+            >
+              <div>
+                <div className="font-display" style={{ fontSize: "1.4vw", color: c.color, fontWeight: 700, letterSpacing: "0.05em" }}>
+                  {c.label}
+                </div>
+                <div className="font-body mt-[0.6vh]" style={{ fontSize: "1.05vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
+                  {c.desc}
+                </div>
               </div>
-              <div className="font-body mt-[1.5vh]" style={{ fontSize: "1.3vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
-                Pipe and process line numbers — extracted complete and split into filterable tokens.
-              </div>
-            </div>
-            <div className="font-body" style={{ fontSize: "1.2vw", color: "#2dc653", opacity: 0.7 }}>
-              e.g. 6"-P-2101-A1A
-            </div>
-          </div>
-          <div
-            className="rounded-2xl px-[1.5vw] py-[2.5vh] flex flex-col justify-between"
-            style={{ background: "rgba(0,180,216,0.10)", border: "1px solid rgba(0,180,216,0.30)" }}
-          >
-            <div>
-              <div className="font-display" style={{ fontSize: "1.8vw", color: "#00b4d8", fontWeight: 700, letterSpacing: "0.05em" }}>
-                INSTRUMENT
-              </div>
-              <div className="font-body mt-[1.5vh]" style={{ fontSize: "1.3vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
-                Instrument tags with full attribute pairing — TOP/BOTTOM, FUNCTN, tag patterns.
+              <div className="font-body mt-[0.8vh]" style={{ fontSize: "0.95vw", color: c.color, opacity: 0.75 }}>
+                {c.example}
               </div>
             </div>
-            <div className="font-body" style={{ fontSize: "1.2vw", color: "#00b4d8", opacity: 0.7 }}>
-              e.g. PI-2101
-            </div>
-          </div>
-          <div
-            className="rounded-2xl px-[1.5vw] py-[2.5vh] flex flex-col justify-between"
-            style={{ background: "rgba(180,100,255,0.10)", border: "1px solid rgba(180,100,255,0.30)" }}
-          >
-            <div>
-              <div className="font-display" style={{ fontSize: "1.8vw", color: "#b46fff", fontWeight: 700, letterSpacing: "0.05em" }}>
-                EQUIPMENT
-              </div>
-              <div className="font-body mt-[1.5vh]" style={{ fontSize: "1.3vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
-                Vessels, pumps, compressors, heat exchangers — identified by block name patterns.
-              </div>
-            </div>
-            <div className="font-body" style={{ fontSize: "1.2vw", color: "#b46fff", opacity: 0.7 }}>
-              e.g. V-101, P-201A
-            </div>
-          </div>
-          <div
-            className="rounded-2xl px-[1.5vw] py-[2.5vh] flex flex-col justify-between"
-            style={{ background: "rgba(255,200,50,0.10)", border: "1px solid rgba(255,200,50,0.30)" }}
-          >
-            <div>
-              <div className="font-display" style={{ fontSize: "1.8vw", color: "#f5c518", fontWeight: 700, letterSpacing: "0.05em" }}>
-                OPC
-              </div>
-              <div className="font-body mt-[1.5vh]" style={{ fontSize: "1.3vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
-                Off-page connectors and tie-ins detected by block name — links drawings together.
-              </div>
-            </div>
-            <div className="font-body" style={{ fontSize: "1.2vw", color: "#f5c518", opacity: 0.7 }}>
-              OPC / Tie-in tags
-            </div>
-          </div>
-          <div
-            className="rounded-2xl px-[1.5vw] py-[2.5vh] flex flex-col justify-between"
-            style={{ background: "rgba(255,140,50,0.10)", border: "1px solid rgba(255,140,50,0.30)" }}
-          >
-            <div>
-              <div className="font-display" style={{ fontSize: "1.8vw", color: "#ff8c32", fontWeight: 700, letterSpacing: "0.05em" }}>
-                TEXT REVIEW
-              </div>
-              <div className="font-body mt-[1.5vh]" style={{ fontSize: "1.3vw", color: "#a8c8e0", fontWeight: 300, lineHeight: 1.5 }}>
-                Unclassified text flagged for manual review — nothing is silently discarded.
-              </div>
-            </div>
-            <div className="font-body" style={{ fontSize: "1.2vw", color: "#ff8c32", opacity: 0.7 }}>
-              Notes, labels, misc
-            </div>
-          </div>
+          ))}
+        </div>
+
+        <div
+          className="mt-[2vh] rounded-xl px-[2vw] py-[1vh]"
+          style={{ background: "rgba(0,180,216,0.07)", border: "1px solid rgba(0,180,216,0.2)" }}
+        >
+          <span className="font-body" style={{ fontSize: "1.1vw", color: "#7a9ab8" }}>
+            Filter <span style={{ color: "#00b4d8", fontWeight: 600 }}>Detected_Type</span> column in the exported CSV to view any single category instantly.&nbsp;
+            <span style={{ color: "#2dc653" }}>Full_Tag</span> gives the reconstructed tag.&nbsp;
+            <span style={{ color: "#f5c518" }}>Context_Tag</span> links free text to its nearest instrument or line.
+          </span>
         </div>
       </div>
     </div>

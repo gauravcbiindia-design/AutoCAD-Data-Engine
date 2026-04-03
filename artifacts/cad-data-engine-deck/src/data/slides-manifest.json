@@ -27,29 +27,37 @@
     "id": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
     "position": 4,
     "filepath": "src/pages/slides/FiveCategories.tsx",
-    "title": "5 Engineering Categories",
-    "description": "LINE, INSTRUMENT, EQUIPMENT, OPC, TEXT_REVIEW — auto-classified.",
+    "title": "9 Engineering Categories",
+    "description": "LINE_NUMBER, INSTRUMENTS, EQUIPMENT, COMPONENTS, OPC, ALARM, INTERLOCK, SPEC, NOTE/TEXT — auto-classified.",
     "speakerNotes": ""
   },
   {
     "id": "5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
     "position": 5,
     "filepath": "src/pages/slides/ExcelOutput.tsx",
-    "title": "Two Structured Excel Workbooks",
-    "description": "ENGINEER_DATA.xlsx and RAW_EXPORT.xlsx explained.",
+    "title": "Structured CSV Export + DXF Write-Back",
+    "description": "RAW_EXPORT.csv with Detected_Type, Full_Tag, Context_Tag columns. DXF round-trip explained.",
     "speakerNotes": ""
   },
   {
     "id": "6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
     "position": 6,
     "filepath": "src/pages/slides/Workflow.tsx",
-    "title": "Three-Step Workflow",
-    "description": "Convert — Drop — Download. Simple end-to-end workflow.",
+    "title": "Four-Step Workflow",
+    "description": "Convert → Drop → Download CSV → Write Back. Complete end-to-end workflow.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "position": 7,
+    "filepath": "src/pages/slides/FilterGuide.tsx",
+    "title": "How to Filter the CSV",
+    "description": "Step-by-step Excel filter guide with Detected_Type quick-reference for all 9 categories.",
     "speakerNotes": ""
   },
   {
     "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
-    "position": 7,
+    "position": 8,
     "filepath": "src/pages/slides/Closing.tsx",
     "title": "Closing — Gaurav Bharti",
     "description": "Closing slide with branding, tagline, and copyright.",
