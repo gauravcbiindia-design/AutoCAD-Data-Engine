@@ -109,9 +109,6 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   BV:"Ball Valve", GV:"Gate Valve", CV:"Check Valve",
   MV:"Motor Valve", SDV:"Shutdown Valve", BDV:"Blowdown Valve",
   MOV:"Motor Operated Valve", SOV:"Solenoid Valve",
-  GATE:"Gate Valve", BALL:"Ball Valve", GLOBE:"Globe Valve",
-  CHECK:"Check Valve", BUTTERFLY:"Butterfly Valve", NEEDLE:"Needle Valve",
-  PLUG:"Plug Valve", DIAPHRAGM:"Diaphragm Valve",
   HS:"Hand Switch", HIC:"Hand Indicating Controller",
   XZSOC:"Instrument (XZSOC)",
   ZT:"Position Transmitter", ZI:"Position Indicator",
@@ -122,10 +119,27 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   TV:"Temperature Valve", LV:"Level Valve", FV:"Flow Valve",
 };
 
+// ── Component / valve body type list ──────────────────────────────────────────
+// These are physical piping components (valve bodies, fittings etc.)
+// They appear as attribute values in P&ID blocks — separate from instrument codes
+
+const COMPONENT_TYPES: Record<string, string> = {
+  GATE:"Gate Valve", BALL:"Ball Valve", GLOBE:"Globe Valve",
+  CHECK:"Check Valve", BUTTERFLY:"Butterfly Valve", NEEDLE:"Needle Valve",
+  PLUG:"Plug Valve", DIAPHRAGM:"Diaphragm Valve", PINCH:"Pinch Valve",
+  PISTON:"Piston Valve", ANGLE:"Angle Valve",
+  STRAINER:"Strainer", FILTER:"Filter", TRAP:"Steam Trap",
+  ORIFICE:"Orifice Plate", NOZZLE:"Nozzle", FLANGE:"Flange",
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function isInstrumentType(code: string): boolean {
   return !!INSTRUMENT_TYPES[code.toUpperCase().trim()];
+}
+
+function isComponentType(code: string): boolean {
+  return !!COMPONENT_TYPES[code.toUpperCase().trim()];
 }
 
 /**
@@ -384,11 +398,14 @@ export function extractEngineeringData(
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
         // treat this row as INSTRUMENTS — UC and other non-instrument codes stay as-is
         const isInstrValue = valTrim.length >= 2 && valTrim.length <= 12 && isInstrumentType(valTrim);
+        // If the attribute VALUE is a physical component type (GATE, BALL, CHECK etc.)
+        const isCompValue  = valTrim.length >= 3 && valTrim.length <= 12 && isComponentType(valTrim);
         const classified   = classifyText(attr.value);
         const detectedType = isInstrAttr   ? "INSTRUMENTS"
                            : isOpcAttr     ? "OPC"
                            : isEquipAttr   ? "EQUIPMENT"
                            : isInstrValue  ? "INSTRUMENTS"
+                           : isCompValue   ? "COMPONENTS"
                            :                 classified.textClass;
 
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value

@@ -32,7 +32,7 @@ export const RAW_COLUMNS = [
 export function buildRawCsvString(result: ExtractionResult): string {
   const SKIP_VALUES = new Set(["", "n/a", "none", "na"]);
   // These detected types are always kept regardless of blank/N/A values
-  const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS", "EQUIPMENT"]);
+  const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS", "EQUIPMENT", "COMPONENTS"]);
 
   const filtered = result.rawRows.filter((row: any) => {
     if (ALWAYS_KEEP.has(String(row.Detected_Type ?? ""))) return true;
