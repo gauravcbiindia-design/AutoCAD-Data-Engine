@@ -646,6 +646,7 @@ const TYPE_BADGE: Record<string, string> = {
   OPC:         "bg-yellow-900/40 text-yellow-300",
   NOTE:        "bg-orange-900/40 text-orange-300",
   TEXT:        "bg-slate-700/50 text-slate-300",
+  TITLE_BLOCK: "bg-zinc-700/50 text-zinc-500",
   BLOCK:       "bg-zinc-800/50 text-zinc-400",
 };
 
@@ -680,6 +681,7 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
     { label: "OPC",         value: typeCounts["OPC"] ?? 0,                bg: "bg-yellow-900/30", color: "text-yellow-300" },
     { label: "NOTE",        value: typeCounts["NOTE"] ?? 0,               bg: "bg-orange-900/30", color: "text-orange-300" },
     { label: "TEXT",        value: typeCounts["TEXT"] ?? 0,               bg: "bg-slate-700/40",  color: "text-slate-300" },
+    { label: "TITLE_BLOCK", value: typeCounts["TITLE_BLOCK"] ?? 0,        bg: "bg-zinc-800/40",   color: "text-zinc-500" },
   ];
 
   const RAW_PREVIEW_COLS = ["DWG", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Full_Tag", "Raw_Text", "Detected_Type"];

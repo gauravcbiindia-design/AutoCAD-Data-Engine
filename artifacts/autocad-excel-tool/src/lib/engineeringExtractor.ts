@@ -176,6 +176,14 @@ function isInstrumentNumber(val: string): boolean {
   return INSTR_NUM_RE.test(val.trim());
 }
 
+// ── Title Block block-name detector ───────────────────────────────────────────
+// These block names are title/border/revision table blocks — not P&ID data
+const TITLE_BLOCK_RE = /^(?:TITLE|TITLEBLK|TITLE[-_]?BLK|TITLE[-_]?BLOCK|TB$|T[-_]BLOCK|SHEET|SHEETBDR|SHT|BORDER|FORMAT|DRG[-_]?BORDER|FRAME|REV[-_]?(?:BLOCK|TABLE|BOX|TBL)?|REVISION[-_]?(?:TABLE|BLOCK)?|DRAWING[-_]?(?:INFO|TITLE|BORDER)|DRG[-_]?INFO|PROJ[-_]?INFO|STAMP|LOGO|NORTH[-_]?ARROW|LEGEND[-_]?BOX)$/i;
+
+function isTitleBlock(blockName: string): boolean {
+  return TITLE_BLOCK_RE.test(blockName.trim());
+}
+
 /**
  * Strip AutoCAD inline formatting codes from a string:
  *   %%U → underline toggle (most common in equipment tags like %%U602-DR-01A/B)
@@ -424,9 +432,12 @@ export function extractEngineeringData(
       // Equipment tag pattern: EQLINE1, EQNAME1, EQNAME2, EQNAME3, EQNO, EQTAG etc.
       const EQUIPMENT_TAG_RE = /^EQ/i;
 
+      // If this is a Title Block / border / revision table → mark everything as TITLE_BLOCK
+      const blockIsTitleBlock = isTitleBlock(blockName);
+
       // Pre-compute full instrument tag for this block (e.g. "TT-2411")
       // so every attribute row can reference which instrument it belongs to
-      const blockInstrMatch = detectInstrument(attrs);
+      const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs);
       const blockFullTag = blockInstrMatch?.display || "";
 
       for (const attr of attrs) {
@@ -447,7 +458,8 @@ export function extractEngineeringData(
         // 3–4 digit standalone numbers = instrument loop numbers split from their tag
         const isInstrNum      = isInstrumentNumber(valTrim);
         const classified   = classifyText(attr.value);
-        const detectedType = isInstrAttr      ? "INSTRUMENTS"
+        const detectedType = blockIsTitleBlock  ? "TITLE_BLOCK"
+                           : isInstrAttr      ? "INSTRUMENTS"
                            : isOpcAttr        ? "OPC"
                            : isEquipAttr      ? "EQUIPMENT"
                            : isAlarmValue     ? "ALARM"
@@ -475,7 +487,7 @@ export function extractEngineeringData(
       const hasInstrAttr = attrs.some(
         (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
       );
-      if (hasInstrAttr) {
+      if (hasInstrAttr && !blockIsTitleBlock) {
         const instrMatch = detectInstrument(attrs);
         if (instrMatch) {
           rawRows.push({

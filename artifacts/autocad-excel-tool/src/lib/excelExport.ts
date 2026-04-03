@@ -34,8 +34,13 @@ export function buildRawCsvString(result: ExtractionResult): string {
   // These detected types are always kept regardless of blank/N/A values
   const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS", "EQUIPMENT", "COMPONENTS", "ALARM", "INTERLOCK"]);
 
+  // These types are noise — never include in export
+  const NEVER_EXPORT = new Set(["TITLE_BLOCK", "BLOCK", "GARBAGE"]);
+
   const filtered = result.rawRows.filter((row: any) => {
-    if (ALWAYS_KEEP.has(String(row.Detected_Type ?? ""))) return true;
+    const type = String(row.Detected_Type ?? "");
+    if (NEVER_EXPORT.has(type)) return false;
+    if (ALWAYS_KEEP.has(type)) return true;
     const val = String(row.Attribute_Value ?? "").trim().toLowerCase();
     const txt = String(row.Raw_Text ?? "").trim().toLowerCase();
     return !SKIP_VALUES.has(val) || !SKIP_VALUES.has(txt);
