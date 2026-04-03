@@ -18,7 +18,7 @@
  *   3. App groups changes by source DWG filename
  *   4. For each DWG, user's original .dxf is read from the selected folder
  *   5. App patches ATTRIB/TEXT/MTEXT entities by handle
- *   6. App outputs "updated_{original}.dxf" — one per source drawing
+ *   6. App overwrites the original .dxf file in-place — same filename, same folder
  *
  * Proprietary software. Unauthorised use strictly prohibited.
  */
@@ -304,14 +304,13 @@ export async function readDxfFromFolder(
   throw new Error(`File "${fileName}.dxf" not found in selected folder.`);
 }
 
-/** Write text back to folder as a new file */
+/** Write text back to folder — overwrites the original file in-place */
 export async function writeUpdatedDxf(
   folderHandle: FileSystemDirectoryHandle,
   originalName: string,
   content: string
 ): Promise<string> {
-  const baseName = originalName.replace(/\.dxf$/i, "");
-  const outName = `updated_${baseName}.dxf`;
+  const outName = originalName.endsWith(".dxf") ? originalName : `${originalName}.dxf`;
   const fh = await folderHandle.getFileHandle(outName, { create: true });
   const writable = await fh.createWritable();
   await writable.write(content);

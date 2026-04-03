@@ -912,8 +912,8 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
       <div>
         <h2 className="text-xl font-semibold mb-1">Write Changes Back to DXF</h2>
         <p className="text-sm text-muted-foreground">
-          Edit values in <strong>RAW_EXPORT.csv</strong> (open in Excel, save as CSV), then upload it here.
-          The app will patch only the changed values into your original DXF files — one updated file per drawing.
+          Edit <strong>Attribute_Value</strong> cells in <strong>RAW_EXPORT.csv</strong> (open in Excel, save as CSV), then upload it here.
+          The app patches the values directly into your original DXF files — <strong>same filename, no copies</strong>.
         </p>
       </div>
 
@@ -935,7 +935,7 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">4.</span>
-            <span>The app writes <strong className="text-foreground">updated_{"{filename}"}.dxf</strong> into the same folder — open directly in AutoCAD</span>
+            <span>The app overwrites the <strong className="text-foreground">original .dxf files</strong> in-place — open them directly in AutoCAD, no rename needed</span>
           </div>
         </div>
       </div>
@@ -1083,7 +1083,9 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium font-mono truncate">{dwg}.dxf</div>
                         {result?.status === "done" && (
-                          <div className="text-xs text-green-400">{result.replacements} values updated → {result.outputName}</div>
+                          <div className="text-xs text-green-400">
+                            {result.replacements} values updated — file replaced in-place
+                          </div>
                         )}
                         {result?.status === "error" && (
                           <div className="text-xs text-destructive">{result.error}</div>
@@ -1118,7 +1120,7 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                 <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                 </svg>
-                All drawings updated successfully! Open <strong>{folderName}</strong> in AutoCAD — look for files prefixed with <strong>updated_</strong>.
+                All drawings updated successfully! Original DXF files in <strong>{folderName}</strong> have been replaced in-place — open them directly in AutoCAD.
               </div>
             )}
 
