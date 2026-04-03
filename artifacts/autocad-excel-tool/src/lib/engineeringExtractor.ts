@@ -488,10 +488,13 @@ export function extractEngineeringData(
     const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
 
     // TEXT / MTEXT rows labelled by category so engineers can filter each group
-    const rawDetectedType = isOpcText                              ? "OPC"
-                          : classified.textClass === "LINE_NUMBER" ? "LINE_NUMBER"
-                          : classified.textClass === "NOTE"        ? "NOTE"
-                          :                                          "TEXT";
+    const contentTrim = text.content.trim();
+    const rawDetectedType = isOpcText                                   ? "OPC"
+                          : classified.textClass === "LINE_NUMBER"      ? "LINE_NUMBER"
+                          : classified.textClass === "NOTE"             ? "NOTE"
+                          : classified.textClass === "INSTRUMENT_TAG"   ? "INSTRUMENTS"
+                          : isInstrumentType(contentTrim)               ? "INSTRUMENTS"
+                          :                                               "TEXT";
 
     rawRows.push({
       DWG: dwgName, HANDLE: handle, Entity_Type: text.type,
