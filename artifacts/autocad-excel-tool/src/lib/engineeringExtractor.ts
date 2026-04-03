@@ -132,6 +132,23 @@ const COMPONENT_TYPES: Record<string, string> = {
   ORIFICE:"Orifice Plate", NOZZLE:"Nozzle", FLANGE:"Flange",
 };
 
+// ── Alarm setpoint codes ───────────────────────────────────────────────────────
+// Single / multi-letter alarm level suffixes that appear as standalone attribute values
+const ALARM_VALUES = new Set([
+  "H", "L", "HH", "LL", "HHH", "LLL",
+  "LAH", "LAL", "LAHH", "LALL", "LAHH", "LALL",
+  "PAH", "PAL", "PAHH", "PALL",
+  "TAH", "TAL", "TAHH", "TALL",
+  "FAH", "FAL", "FAHH", "FALL",
+  "AAH", "AAL",
+]);
+
+// ── Interlock codes ────────────────────────────────────────────────────────────
+const INTERLOCK_VALUES = new Set([
+  "Z", "I", "IL", "INT", "INTLK", "INTLOCK",
+  "SD", "SIS", "ESD", "IPF",
+]);
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function isInstrumentType(code: string): boolean {
@@ -140,6 +157,14 @@ function isInstrumentType(code: string): boolean {
 
 function isComponentType(code: string): boolean {
   return !!COMPONENT_TYPES[code.toUpperCase().trim()];
+}
+
+function isAlarmCode(code: string): boolean {
+  return ALARM_VALUES.has(code.toUpperCase().trim());
+}
+
+function isInterlockCode(code: string): boolean {
+  return INTERLOCK_VALUES.has(code.toUpperCase().trim());
 }
 
 /**
@@ -397,16 +422,22 @@ export function extractEngineeringData(
         const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
         // treat this row as INSTRUMENTS — UC and other non-instrument codes stay as-is
-        const isInstrValue = valTrim.length >= 2 && valTrim.length <= 12 && isInstrumentType(valTrim);
-        // If the attribute VALUE is a physical component type (GATE, BALL, CHECK etc.)
-        const isCompValue  = valTrim.length >= 3 && valTrim.length <= 12 && isComponentType(valTrim);
+        const isInstrValue    = valTrim.length >= 2 && valTrim.length <= 12 && isInstrumentType(valTrim);
+        // Physical component type (GATE, BALL, CHECK etc.)
+        const isCompValue     = valTrim.length >= 3 && valTrim.length <= 12 && isComponentType(valTrim);
+        // Alarm setpoint codes: H, L, HH, LL, HHH, LLL etc.
+        const isAlarmValue    = isAlarmCode(valTrim);
+        // Interlock codes: Z, I, IL, INT etc.
+        const isInterlockValue = isInterlockCode(valTrim);
         const classified   = classifyText(attr.value);
-        const detectedType = isInstrAttr   ? "INSTRUMENTS"
-                           : isOpcAttr     ? "OPC"
-                           : isEquipAttr   ? "EQUIPMENT"
-                           : isInstrValue  ? "INSTRUMENTS"
-                           : isCompValue   ? "COMPONENTS"
-                           :                 classified.textClass;
+        const detectedType = isInstrAttr      ? "INSTRUMENTS"
+                           : isOpcAttr        ? "OPC"
+                           : isEquipAttr      ? "EQUIPMENT"
+                           : isAlarmValue     ? "ALARM"
+                           : isInterlockValue ? "INTERLOCK"
+                           : isInstrValue     ? "INSTRUMENTS"
+                           : isCompValue      ? "COMPONENTS"
+                           :                    classified.textClass;
 
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value
         const cleanValue = stripDxfCodes(attr.value);
