@@ -167,6 +167,14 @@ function isInterlockCode(code: string): boolean {
   return INTERLOCK_VALUES.has(code.toUpperCase().trim());
 }
 
+// ── Instrument loop number detector ───────────────────────────────────────────
+// Standalone 3–4 digit numbers are instrument loop numbers separated from tag
+const INSTR_NUM_RE = /^\d{3,4}$/;
+
+function isInstrumentNumber(val: string): boolean {
+  return INSTR_NUM_RE.test(val.trim());
+}
+
 /**
  * Strip AutoCAD inline formatting codes from a string:
  *   %%U → underline toggle (most common in equipment tags like %%U602-DR-01A/B)
@@ -429,12 +437,15 @@ export function extractEngineeringData(
         const isAlarmValue    = isAlarmCode(valTrim);
         // Interlock codes: Z, I, IL, INT etc.
         const isInterlockValue = isInterlockCode(valTrim);
+        // 3–4 digit standalone numbers = instrument loop numbers split from their tag
+        const isInstrNum      = isInstrumentNumber(valTrim);
         const classified   = classifyText(attr.value);
         const detectedType = isInstrAttr      ? "INSTRUMENTS"
                            : isOpcAttr        ? "OPC"
                            : isEquipAttr      ? "EQUIPMENT"
                            : isAlarmValue     ? "ALARM"
                            : isInterlockValue ? "INTERLOCK"
+                           : isInstrNum       ? "INSTRUMENTS"
                            : isInstrValue     ? "INSTRUMENTS"
                            : isCompValue      ? "COMPONENTS"
                            :                    classified.textClass;
