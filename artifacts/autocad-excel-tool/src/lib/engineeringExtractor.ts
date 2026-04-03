@@ -111,6 +111,7 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   MV:"Motor Valve", SDV:"Shutdown Valve", BDV:"Blowdown Valve",
   MOV:"Motor Operated Valve", SOV:"Solenoid Valve",
   HS:"Hand Switch", HIC:"Hand Indicating Controller",
+  S:"Solenoid / Instrument (S)",
   XZSOC:"Instrument (XZSOC)",
   ZT:"Position Transmitter", ZI:"Position Indicator",
   ST:"Speed Transmitter", SI:"Speed Indicator",
@@ -448,7 +449,7 @@ export function extractEngineeringData(
         const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
         // treat this row as INSTRUMENTS — UC and other non-instrument codes stay as-is
-        const isInstrValue    = valTrim.length >= 2 && valTrim.length <= 12 && isInstrumentType(valTrim);
+        const isInstrValue    = valTrim.length >= 1 && valTrim.length <= 12 && isInstrumentType(valTrim);
         // Physical component type (GATE, BALL, CHECK etc.)
         const isCompValue     = valTrim.length >= 3 && valTrim.length <= 12 && isComponentType(valTrim);
         // Alarm setpoint codes: H, L, HH, LL, HHH, LLL etc.
