@@ -486,7 +486,12 @@ export function extractEngineeringData(
     const handle = text.handle || "";
     const classified = classifyText(text.content);
     const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
-    const rawDetectedType = isOpcText ? "OPC" : classified.textClass;
+
+    // TEXT / MTEXT rows always labelled "TEXT" unless they are OPC or LINE_NUMBER
+    // — this lets engineers filter all annotation rows as one group
+    const rawDetectedType = isOpcText                              ? "OPC"
+                          : classified.textClass === "LINE_NUMBER" ? "LINE_NUMBER"
+                          :                                          "TEXT";
 
     rawRows.push({
       DWG: dwgName, HANDLE: handle, Entity_Type: text.type,
