@@ -474,12 +474,12 @@ export function extractEngineeringData(
         const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock  ? "TITLE_BLOCK"
-                           : isBlankInstrSlot  ? "INSTRUMENTS"
+                           : isAlarmValue     ? "ALARM"        // before isInstrAttr so H/L on TOP → ALARM
+                           : isInterlockValue ? "INTERLOCK"    // before isInstrAttr so Z/I on TOP → INTERLOCK
+                           : isBlankInstrSlot ? "INSTRUMENTS"
                            : isInstrAttr      ? "INSTRUMENTS"
                            : isOpcAttr        ? "OPC"
                            : isEquipAttr      ? "EQUIPMENT"
-                           : isAlarmValue     ? "ALARM"
-                           : isInterlockValue ? "INTERLOCK"
                            : isInstrNum       ? "INSTRUMENTS"
                            : isInstrValue     ? "INSTRUMENTS"
                            : isCompValue      ? "COMPONENTS"
