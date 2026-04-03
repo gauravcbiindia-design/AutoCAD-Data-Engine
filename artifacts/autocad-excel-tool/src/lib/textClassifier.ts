@@ -129,9 +129,12 @@ const NOTE_RE = /^(?:NOTE|N[Oo]TE?S?|GENERAL\s+NOTES?|[\d]+\s*[.)]\s+\w)/i;
 const GARBAGE_RE = /^[0-9.,-]{1,6}$|^[A-Z]$|^[\s\-_./]{1,3}$/;
 
 // ── Known spec class patterns ─────────────────────────────────────────────────
-// Piping spec codes: A2A, D2A, D1D, B1A, A1K  (Letter + Digit + 1-2 Letters)
-// General spec:     CS-150, SS316, A1A-INS etc.
-const PIPING_SPEC_RE = /^[A-Z]\d[A-Z]{1,2}$/;
+// Piping spec codes:
+//   LDL   → A2A, D1D, B1A, A1K       (Letter + Digit + 1 Letter)
+//   LDLL  → A2AH, D1DX, B1AH, A1KK   (Letter + Digit + 2 Letters)
+//   LDLLL → A2AHH                     (Letter + Digit + 3 Letters)
+//   With insulation/tracing suffix:    B1A-H, A1A-P (trailing -Letter)
+const PIPING_SPEC_RE = /^[A-Z]\d[A-Z]{1,3}(?:-[A-Z])?$/;
 const SPEC_RE = /^(?:[A-Z]{1,3}\d{0,3}[-–]?(?:\d{2,4})?(?:[-–][A-Z0-9]{2,6})?(?:[-–][A-Z0-9]{2,6})?)$/;
 
 // ── Classifier function ───────────────────────────────────────────────────────
