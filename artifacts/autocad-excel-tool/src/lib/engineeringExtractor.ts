@@ -100,8 +100,9 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   LIC:"Level Indicating Controller", LCV:"Level Control Valve",
   LSH:"Level Switch High", LSL:"Level Switch Low", LG:"Level Gauge",
   TT:"Temperature Transmitter", TI:"Temperature Indicator",
-  TIC:"Temperature Indicating Controller", TE:"Temperature Element",
-  TW:"Thermowell", TSH:"Temperature Switch High", TSL:"Temperature Switch Low",
+  TC:"Temperature Controller", TIC:"Temperature Indicating Controller",
+  TE:"Temperature Element", TW:"Thermowell",
+  TSH:"Temperature Switch High", TSL:"Temperature Switch Low",
   AT:"Analytical Transmitter", AI:"Analytical Indicator",
   AIC:"Analytical Indicating Controller",
   XV:"On/Off Valve", XCV:"Control Valve", HV:"Hand Valve",
@@ -373,14 +374,18 @@ export function extractEngineeringData(
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
         const valTrim = attr.value.trim();
-        const isInstrAttr = INSTRUMENT_ATTR_TAGS.has(tagUpper);
-        const isOpcAttr = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
-        const isEquipAttr = EQUIPMENT_TAG_RE.test(tagUpper);
-        const classified = classifyText(attr.value);
-        const detectedType = isInstrAttr  ? "INSTRUMENTS"
-                           : isOpcAttr    ? "OPC"
-                           : isEquipAttr  ? "EQUIPMENT"
-                           :                classified.textClass;
+        const isInstrAttr  = INSTRUMENT_ATTR_TAGS.has(tagUpper);
+        const isOpcAttr    = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
+        const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
+        // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
+        // treat this row as INSTRUMENTS — UC and other non-instrument codes stay as-is
+        const isInstrValue = valTrim.length >= 2 && valTrim.length <= 5 && isInstrumentType(valTrim);
+        const classified   = classifyText(attr.value);
+        const detectedType = isInstrAttr   ? "INSTRUMENTS"
+                           : isOpcAttr     ? "OPC"
+                           : isEquipAttr   ? "EQUIPMENT"
+                           : isInstrValue  ? "INSTRUMENTS"
+                           :                 classified.textClass;
 
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value
         const cleanValue = stripDxfCodes(attr.value);
