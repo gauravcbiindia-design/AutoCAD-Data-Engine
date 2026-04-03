@@ -12,14 +12,11 @@ import {
   mergeAndPostProcess,
   type ExtractionResult,
 } from "@/lib/engineeringExtractor";
+import { exportRawCsv, buildRawCsvString } from "@/lib/excelExport";
 import {
-  exportEngineerData, exportRawCsv, buildRawCsvString,
-  exportBatchToExcel, type FileParsedResult
-} from "@/lib/excelExport";
-import {
-  parseRawExport, parseRawExportCsv, patchDxfContent, downloadDxf,
+  parseRawExport, parseRawExportCsv, patchDxfContent,
   readDxfFromFolder, writeUpdatedDxf,
-  type ParsedExcelResult, type DwgPatchMap,
+  type ParsedExcelResult,
 } from "@/lib/excelToDxf";
 
 // ── File System Access API helpers ────────────────────────────────────────────
@@ -646,27 +643,60 @@ const CAT_STYLE: Record<string, { bg: string; text: string }> = {
 
 // ── Results Panel ─────────────────────────────────────────────────────────────
 
-function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCount: number }) {
-  const { stats, rawRows } = result;
+// Detected_Type badge colour map
+const TYPE_BADGE: Record<string, string> = {
+  LINE_NUMBER: "bg-green-900/50 text-green-300",
+  INSTRUMENTS: "bg-blue-900/50 text-blue-300",
+  EQUIPMENT:   "bg-purple-900/50 text-purple-300",
+  OPC:         "bg-yellow-900/40 text-yellow-300",
+  NOTE:        "bg-orange-900/40 text-orange-300",
+  TEXT:        "bg-slate-700/50 text-slate-300",
+  BLOCK:       "bg-zinc-800/50 text-zinc-400",
+};
 
-  const RAW_PREVIEW_COLS = ["DWG", "HANDLE", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Raw_Text"];
-  const preview = rawRows.slice(0, 15);
+function TypeBadge({ type }: { type: string }) {
+  const cls = TYPE_BADGE[type] ?? "bg-zinc-800/50 text-zinc-400";
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap ${cls}`}>
+      {type || "—"}
+    </span>
+  );
+}
+
+function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCount: number }) {
+  const { rawRows } = result;
+
+  // Count by Detected_Type in rawRows for accurate display
+  const typeCounts: Record<string, number> = {};
+  for (const row of rawRows) {
+    const t = (row as any).Detected_Type || "OTHER";
+    typeCounts[t] = (typeCounts[t] || 0) + 1;
+  }
+
+  const statCards = [
+    { label: "Drawings",    value: doneCount,                             bg: "bg-blue-900/30",   color: "text-blue-300" },
+    { label: "Total Rows",  value: rawRows.length,                        bg: "bg-primary/15",    color: "text-primary" },
+    { label: "LINE_NUMBER", value: typeCounts["LINE_NUMBER"] ?? 0,        bg: "bg-green-900/30",  color: "text-green-300" },
+    { label: "INSTRUMENTS", value: typeCounts["INSTRUMENTS"] ?? 0,        bg: "bg-blue-900/30",   color: "text-blue-300" },
+    { label: "EQUIPMENT",   value: typeCounts["EQUIPMENT"] ?? 0,          bg: "bg-purple-900/30", color: "text-purple-300" },
+    { label: "OPC",         value: typeCounts["OPC"] ?? 0,                bg: "bg-yellow-900/30", color: "text-yellow-300" },
+    { label: "NOTE",        value: typeCounts["NOTE"] ?? 0,               bg: "bg-orange-900/30", color: "text-orange-300" },
+    { label: "TEXT",        value: typeCounts["TEXT"] ?? 0,               bg: "bg-slate-700/40",  color: "text-slate-300" },
+  ];
+
+  const RAW_PREVIEW_COLS = ["DWG", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value", "Raw_Text", "Detected_Type"];
+  const preview = rawRows.slice(0, 20);
 
   return (
     <div className="space-y-5 border border-border rounded-xl p-5 bg-card">
       <h3 className="font-semibold text-base">Extraction Results</h3>
 
-      {/* Simple stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Drawings",       value: doneCount,           bg: "bg-blue-900/30",   color: "text-blue-300" },
-          { label: "Total Rows",     value: stats.totalEntities, bg: "bg-primary/15",    color: "text-primary" },
-          { label: "Block / ATTRIB", value: stats.blockRows,     bg: "bg-teal-900/30",   color: "text-teal-300" },
-          { label: "Text / MTEXT",   value: stats.textRows,      bg: "bg-purple-900/30", color: "text-purple-300" },
-        ].map((s) => (
+      {/* Stats grid — 4 columns */}
+      <div className="grid grid-cols-4 gap-2">
+        {statCards.map((s) => (
           <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
-            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.value.toLocaleString()}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 font-medium">{s.label}</div>
           </div>
         ))}
       </div>
@@ -689,32 +719,32 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
               <tbody className="divide-y divide-border">
                 {preview.map((row: any, i: number) => (
                   <tr key={i} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-2 py-1.5 font-medium max-w-[100px] truncate">{row.DWG}</td>
-                    <td className="px-2 py-1.5 font-mono text-primary/70">{row.HANDLE}</td>
+                    <td className="px-2 py-1.5 font-medium max-w-[90px] truncate">{row.DWG}</td>
                     <td className="px-2 py-1.5">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">{row.Entity_Type}</span>
                     </td>
-                    <td className="px-2 py-1.5 max-w-[100px] truncate text-muted-foreground">{row.BLOCK}</td>
+                    <td className="px-2 py-1.5 max-w-[80px] truncate text-muted-foreground">{row.BLOCK}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{row.Layer}</td>
                     <td className="px-2 py-1.5 font-mono text-teal-400">{row.Attribute_Tag}</td>
-                    <td className="px-2 py-1.5 max-w-[140px] truncate text-foreground font-medium">{row.Attribute_Value}</td>
-                    <td className="px-2 py-1.5 max-w-[160px] truncate text-muted-foreground">{row.Raw_Text}</td>
+                    <td className="px-2 py-1.5 max-w-[130px] truncate text-foreground font-medium">{row.Attribute_Value}</td>
+                    <td className="px-2 py-1.5 max-w-[130px] truncate text-muted-foreground">{row.Raw_Text}</td>
+                    <td className="px-2 py-1.5"><TypeBadge type={row.Detected_Type} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {rawRows.length > 15 && (
+            {rawRows.length > 20 && (
               <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border">
-                Showing 15 of {rawRows.length} rows — full data in downloaded file
+                Showing 20 of {rawRows.length.toLocaleString()} rows — full data in downloaded CSV
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Column list */}
+      {/* Column reference */}
       <div className="p-3 rounded-lg bg-muted/30 border border-border text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">All columns in file: </span>
+        <span className="font-semibold text-foreground">CSV columns: </span>
         <span className="font-mono">DWG · HANDLE · Entity_Type · BLOCK · Layer · X · Y · Attribute_Tag · Attribute_Value · Raw_Text · Detected_Type</span>
       </div>
     </div>
@@ -882,8 +912,8 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
       <div>
         <h2 className="text-xl font-semibold mb-1">Write Changes Back to DXF</h2>
         <p className="text-sm text-muted-foreground">
-          Edit values in <strong>RAW_EXPORT.xlsx</strong>, then upload it here. The app will patch
-          only the changed values into your original DXF files — one updated file per drawing.
+          Edit values in <strong>RAW_EXPORT.csv</strong> (open in Excel, save as CSV), then upload it here.
+          The app will patch only the changed values into your original DXF files — one updated file per drawing.
         </p>
       </div>
 
@@ -893,19 +923,19 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
         <div className="grid grid-cols-1 gap-1.5 text-muted-foreground">
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">1.</span>
-            <span>Export DXF files as usual → edit values in <strong className="text-foreground">RAW_EXPORT.xlsx</strong></span>
+            <span>Drop DXF files → click <strong className="text-foreground">Extract</strong> → download <strong className="text-foreground">RAW_EXPORT.csv</strong></span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">2.</span>
-            <span>Select the folder containing your <strong className="text-foreground">original .dxf files</strong> (the same folder you exported from)</span>
+            <span>Open CSV in Excel, edit <strong className="text-foreground">Attribute_Value</strong> column, save as <strong className="text-foreground">.csv</strong></span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">3.</span>
-            <span>Upload the edited RAW_EXPORT.xlsx and click <strong className="text-foreground">Apply Changes</strong></span>
+            <span>Select the folder with your <strong className="text-foreground">original .dxf files</strong>, then drop the edited CSV here and click <strong className="text-foreground">Apply Changes</strong></span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">4.</span>
-            <span>The app writes <strong className="text-foreground">updated_{"{filename}"}.dxf</strong> files into the same folder — AutoCAD-ready</span>
+            <span>The app writes <strong className="text-foreground">updated_{"{filename}"}.dxf</strong> into the same folder — open directly in AutoCAD</span>
           </div>
         </div>
       </div>
