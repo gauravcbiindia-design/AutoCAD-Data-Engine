@@ -524,8 +524,11 @@ export function extractEngineeringData(
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value
         const cleanValue = stripDxfCodes(attr.value);
 
+        // Use the individual ATTRIB entity's own handle for write-back accuracy.
+        // Fall back to INSERT block handle if ATTRIB handle is missing.
+        const attribHandle = attr.handle || handle;
         rawRows.push({
-          DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
+          DWG: dwgName, HANDLE: attribHandle, Entity_Type: "ATTRIB",
           BLOCK: blockName, Layer: block.layer,
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,

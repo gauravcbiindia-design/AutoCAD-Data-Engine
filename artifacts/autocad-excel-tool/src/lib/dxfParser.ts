@@ -10,6 +10,7 @@ import DxfParser from "dxf-parser";
 export interface BlockAttribute {
   tag: string;
   value: string;
+  handle?: string;  // individual ATTRIB entity's own DXF handle (for write-back)
 }
 
 export interface BlockRecord {
@@ -252,11 +253,12 @@ export function parseDxf(fileContent: string): ParsedDxfData {
       }
 
       if (pairs[i].code === 0 && pairs[i].value === "ATTRIB" && currentInsertHandle) {
-        // Read attrib
+        // Read attrib — capture handle (code 5), tag (code 2), value (code 1)
         let j = i + 1;
-        let tag = "", value = "";
+        let tag = "", value = "", attHandle: string | undefined;
         while (j < pairs.length && pairs[j].code !== 0) {
-          if (pairs[j].code === 2) tag = pairs[j].value;
+          if (pairs[j].code === 5) attHandle = pairs[j].value;
+          else if (pairs[j].code === 2) tag = pairs[j].value;
           else if (pairs[j].code === 1) value = pairs[j].value;
           j++;
         }
@@ -265,7 +267,7 @@ export function parseDxf(fileContent: string): ParsedDxfData {
           // Only add if not already there
           const existing = attribsByOwner.get(currentInsertHandle)!;
           if (!existing.find((a) => a.tag === tag)) {
-            existing.push({ handle: undefined, ownerHandle: currentInsertHandle, layer: "0", tag, value, x: 0, y: 0 });
+            existing.push({ handle: attHandle, ownerHandle: currentInsertHandle, layer: "0", tag, value, x: 0, y: 0 });
           }
         }
         i = j;
@@ -290,6 +292,7 @@ export function parseDxf(fileContent: string): ParsedDxfData {
     const attributes: BlockAttribute[] = attrList.map((a) => ({
       tag: a.tag,
       value: a.value,
+      handle: a.handle,   // ATTRIB entity's own handle — used for DXF write-back
     }));
 
     blocks.push({
