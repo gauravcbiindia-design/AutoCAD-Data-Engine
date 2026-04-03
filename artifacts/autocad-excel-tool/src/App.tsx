@@ -6,9 +6,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { parseDxf } from "@/lib/dxfParser";
 import {
-  extractEngineeringData,
   mergeAndPostProcess,
   type ExtractionResult,
 } from "@/lib/engineeringExtractor";
@@ -350,31 +348,56 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
       updated[i] = { ...updated[i], status: "processing" };
       setEntries([...updated]);
 
-      await new Promise<void>((resolve) => {
+      // Step 1: read file as text (async, non-blocking)
+      const content = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target?.result as string;
-          try {
-            const parsed = parseDxf(content);
-            const dwgName = updated[i].file.name.replace(/\.dxf$/i, "");
-            const { rawRows, engineerRows, lineTokens, textReviewRows, drawingMetaRows } =
-              extractEngineeringData(dwgName, parsed);
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsText(updated[i].file);
+      });
 
+      // Step 2: parse + extract in a Web Worker so the UI never freezes
+      await new Promise<void>((resolve) => {
+        const worker = new Worker(
+          new URL("./lib/dxfWorker.ts", import.meta.url),
+          { type: "module" }
+        );
+
+        worker.onmessage = (e) => {
+          const data = e.data;
+          if (data.type === "done") {
+            const dwgName = data.dwgName;
             updated[i] = {
               ...updated[i],
               status: "done",
-              result: { fileName: updated[i].file.name, data: parsed },
-              blockCount: parsed.blocks.length,
-              textCount: parsed.texts.length,
+              blockCount: data.blockCount,
+              textCount: data.textCount,
             };
-            perFile.push({ dwgName, rawRows, engineerRows, lineTokens, textReviewRows, drawingMetaRows });
-          } catch (err: any) {
-            updated[i] = { ...updated[i], status: "error", error: err.message };
+            perFile.push({
+              dwgName,
+              rawRows: data.rawRows,
+              engineerRows: data.engineerRows,
+              lineTokens: data.lineTokens,
+              textReviewRows: data.textReviewRows,
+              drawingMetaRows: data.drawingMetaRows,
+            });
+          } else {
+            updated[i] = { ...updated[i], status: "error", error: data.message };
           }
           setEntries([...updated]);
+          worker.terminate();
           resolve();
         };
-        reader.readAsText(updated[i].file);
+
+        worker.onerror = (e) => {
+          updated[i] = { ...updated[i], status: "error", error: e.message ?? "Worker error" };
+          setEntries([...updated]);
+          worker.terminate();
+          resolve();
+        };
+
+        const dwgName = updated[i].file.name.replace(/\.dxf$/i, "");
+        worker.postMessage({ type: "parse", dwgName, content });
       });
     }
 
