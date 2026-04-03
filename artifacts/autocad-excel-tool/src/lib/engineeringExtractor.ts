@@ -343,11 +343,17 @@ export function extractEngineeringData(
       // Tags that identify instrument data in P&ID blocks
       const INSTRUMENT_ATTR_TAGS = new Set(["TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCTN", "FUNCTION"]);
 
+      // OPC connector tag pattern: DA1001, DA1002, DB2001, etc. (2 letters + 3-6 digits)
+      const OPC_TAG_RE = /^D[A-Z]\d{3,6}$/i;
+
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
         const isInstrAttr = INSTRUMENT_ATTR_TAGS.has(tagUpper);
+        const isOpcAttr = OPC_TAG_RE.test(tagUpper);
         const classified = classifyText(attr.value);
-        const detectedType = isInstrAttr ? "INSTRUMENTS" : classified.textClass;
+        const detectedType = isInstrAttr ? "INSTRUMENTS"
+                           : isOpcAttr   ? "OPC"
+                           :               classified.textClass;
 
         rawRows.push({
           DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",

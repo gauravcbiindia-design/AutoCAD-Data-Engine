@@ -151,8 +151,11 @@ export function exportRaw(result: ExtractionResult) {
 /** Build a CSV string from RAW_EXPORT data (no file I/O — pure string) */
 export function buildRawCsvString(result: ExtractionResult): string {
   const SKIP_VALUES = new Set(["", "n/a", "none", "na"]);
+  // These detected types are always kept regardless of blank/N/A values
+  const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS"]);
 
   const rows = result.rawRows.filter((row: any) => {
+    if (ALWAYS_KEEP.has(String(row.Detected_Type ?? ""))) return true;
     const val = String(row.Attribute_Value ?? "").trim().toLowerCase();
     const txt = String(row.Raw_Text ?? "").trim().toLowerCase();
     // Keep rows that have a meaningful value in either field
