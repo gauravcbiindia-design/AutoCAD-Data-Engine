@@ -231,43 +231,79 @@ interface InstrumentMatch {
   display: string;
 }
 
-function detectInstrument(attrs: { tag: string; value: string }[]): InstrumentMatch | null {
+function detectInstrument(
+  attrs: { tag: string; value: string }[],
+  blockName = ""
+): InstrumentMatch | null {
   const map: Record<string, string> = {};
   attrs.forEach((a) => { map[a.tag.toUpperCase()] = a.value.trim(); });
 
-  // TOP/BOTTOM pattern (most common P&ID block format)
-  const top = map["TOP"] || map["TOPATTR"] || map["FUNCTN"] || map["FUNCTION"] || map["INSTRUMENT"] || "";
-  const bottom =
-    map["BOTTOM"] || map["BOTATTR"] || map["NUMBER"] || map["NUM"] ||
-    map["TAGNO"] || map["TAG_NO"] || map["TAG"] || map["ITEM"] || map["ITEM_NO"] || "";
+  const allValues = Object.values(map);
 
-  if (top && isInstrumentType(top)) {
-    const instrType = top.toUpperCase();
-    const instrTag = bottom;
-    return {
-      instrType,
-      instrTag,
-      display: instrTag ? `${instrType}-${instrTag}` : instrType,
-    };
+  // ── Helper: find best numeric loop-number from all attribute values ──────
+  // Prefers 3–5 digit standalone numbers, accepts trailing letter suffix (e.g. 2101A)
+  const LOOP_NUM_RE = /^\d{2,5}[A-Z]?$/;
+  function findLoopNumber(): string {
+    // 1. Known "number" attribute tags — ordered from most to least specific
+    const NUMBER_TAGS = [
+      "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
+      "LOOP", "LOOP_NO", "LOOPNO", "LOOP_NUMBER", "LOOP_NUM",
+      "TAG", "ITEM", "ITEM_NO", "ID", "ID_NO",
+      "REF", "REF_NO", "SEQ", "SEQ_NO",
+      "MID", "MIDATTR", "SUFFIX", "AREA_NUM",
+    ];
+    for (const t of NUMBER_TAGS) {
+      const v = (map[t] || "").trim();
+      if (v && LOOP_NUM_RE.test(v)) return v;
+    }
+    // 2. Scan ALL values for a numeric-looking one
+    const numericVal = allValues.find((x) => LOOP_NUM_RE.test(x.trim()));
+    if (numericVal) return numericVal.trim();
+    // 3. Try block name itself — extract number (e.g. "PG-2401" → "2401")
+    const blockNumMatch = blockName.match(/\d{3,5}[A-Z]?/);
+    if (blockNumMatch) return blockNumMatch[0];
+    return "";
   }
 
-  // Any attribute value that IS a full instrument tag (e.g. PI-2101)
+  // ── Pass 1: Known TOP attribute tags ────────────────────────────────────
+  const TOP_TAGS = [
+    "TOP", "TOPATTR", "FUNCTN", "FUNCTION", "INSTRUMENT",
+    "TYPE", "INSTR_TYPE", "INST_TYPE", "TAG_TYPE",
+  ];
+  for (const t of TOP_TAGS) {
+    const v = (map[t] || "").trim().toUpperCase();
+    if (v && isInstrumentType(v)) {
+      const num = findLoopNumber();
+      return { instrType: v, instrTag: num, display: num ? `${v}-${num}` : v };
+    }
+  }
+
+  // ── Pass 2: Any attribute value that IS a full tag (e.g. PI-2101) ───────
   const FULL_TAG_RE = /^([A-Z]{1,4})-(\d{2,5}[A-Z]?)$/i;
   for (const a of attrs) {
     const m = a.value.trim().toUpperCase().match(FULL_TAG_RE);
     if (m && isInstrumentType(m[1])) {
-      return { instrType: m[1], instrTag: m[2], display: a.value.trim().toUpperCase() };
+      return { instrType: m[1], instrTag: m[2], display: `${m[1]}-${m[2]}` };
     }
   }
 
-  // Any attribute value that is JUST an instrument type code (broken block TOP)
+  // ── Pass 3: Any attribute value that is just an instrument type code ─────
+  // (IA100-style blocks, non-standard TOP attribute names, etc.)
   for (const a of attrs) {
     const v = a.value.trim().toUpperCase();
+    if (!v || v.length > 6) continue;
     if (isInstrumentType(v)) {
-      // Find a numeric-looking attr for tag
-      const tagVal = Object.values(map).find((x) => /^\d{2,6}[A-Z]?$/.test(x.trim())) || "";
-      return { instrType: v, instrTag: tagVal, display: tagVal ? `${v}-${tagVal}` : v };
+      const num = findLoopNumber();
+      return { instrType: v, instrTag: num, display: num ? `${v}-${num}` : v };
     }
+  }
+
+  // ── Pass 4: Instrument type embedded in block name (e.g. "PG_GAUGE") ────
+  const BLOCK_TYPE_RE = /^([A-Z]{1,4})[_\-\s]/i;
+  const bm = blockName.toUpperCase().match(BLOCK_TYPE_RE);
+  if (bm && isInstrumentType(bm[1])) {
+    const num = findLoopNumber();
+    return { instrType: bm[1], instrTag: num, display: num ? `${bm[1]}-${num}` : bm[1] };
   }
 
   return null;
@@ -439,7 +475,7 @@ export function extractEngineeringData(
 
       // Pre-compute full instrument tag for this block (e.g. "TT-2411")
       // so every attribute row can reference which instrument it belongs to
-      const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs);
+      const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs, blockName);
       const blockFullTag = blockInstrMatch?.display || "";
 
       // Attribute tags that hold the instrument NUMBER/LOOP in P&ID blocks
@@ -504,7 +540,7 @@ export function extractEngineeringData(
         (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
       );
       if (hasInstrAttr && !blockIsTitleBlock) {
-        const instrMatch = detectInstrument(attrs);
+        const instrMatch = detectInstrument(attrs, blockName);
         if (instrMatch) {
           rawRows.push({
             DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
@@ -583,7 +619,7 @@ export function extractEngineeringData(
     }
 
     // ── Instrument? ────────────────────────────────────────────────────────
-    const instrMatch = detectInstrument(attrs);
+    const instrMatch = detectInstrument(attrs, blockName);
     if (instrMatch) {
       const row = emptyRow(dwgName, handle, "INSTRUMENT");
       row.Instrument_Type = instrMatch.instrType;
