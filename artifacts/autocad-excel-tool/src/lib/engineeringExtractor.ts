@@ -346,10 +346,14 @@ export function extractEngineeringData(
       // OPC connector tag pattern: DA1001, DA1002, DB2001, etc. (2 letters + 3-6 digits)
       const OPC_TAG_RE = /^D[A-Z]\d{3,6}$/i;
 
+      // OPC value pattern: "FROM ...", "TO ...", "CONT FROM", "CONTINUED TO" etc.
+      const OPC_VALUE_RE = /^(?:FROM|TO|CONT(?:INUED)?\s+(?:FROM|TO)|FROM\s+DWG|TO\s+DWG)\b/i;
+
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
+        const valTrim = attr.value.trim();
         const isInstrAttr = INSTRUMENT_ATTR_TAGS.has(tagUpper);
-        const isOpcAttr = OPC_TAG_RE.test(tagUpper);
+        const isOpcAttr = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
         const classified = classifyText(attr.value);
         const detectedType = isInstrAttr ? "INSTRUMENTS"
                            : isOpcAttr   ? "OPC"
@@ -475,16 +479,21 @@ export function extractEngineeringData(
   }
 
   // ── 2. TEXT / MTEXT entities ──────────────────────────────────────────────
+  // OPC pattern for loose text: "FROM ...", "TO ...", "CONT FROM/TO" etc.
+  const OPC_LOOSE_RE = /^(?:FROM|TO|CONT(?:INUED)?\s+(?:FROM|TO)|FROM\s+DWG|TO\s+DWG)\b/i;
+
   for (const text of parsedData.texts) {
     const handle = text.handle || "";
     const classified = classifyText(text.content);
+    const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
+    const rawDetectedType = isOpcText ? "OPC" : classified.textClass;
 
     rawRows.push({
       DWG: dwgName, HANDLE: handle, Entity_Type: text.type,
       BLOCK: "", Layer: text.layer,
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
-      Raw_Text: text.content, Detected_Type: classified.textClass,
+      Raw_Text: text.content, Detected_Type: rawDetectedType,
     });
 
     const cleanVal = classified.clean;
