@@ -123,6 +123,24 @@ function isInstrumentType(code: string): boolean {
   return !!INSTRUMENT_TYPES[code.toUpperCase().trim()];
 }
 
+/**
+ * Strip AutoCAD inline formatting codes from a string:
+ *   %%U → underline toggle (most common in equipment tags like %%U602-DR-01A/B)
+ *   %%O → overline toggle
+ *   %%D → degree symbol (°)
+ *   %%P → plus/minus (±)
+ *   %%C → diameter (Ø)
+ * Returns clean, readable text.
+ */
+function stripDxfCodes(val: string): string {
+  return val
+    .replace(/%%[UuOo]/g, "")   // underline / overline toggles
+    .replace(/%%[Dd]/g, "°")
+    .replace(/%%[Pp]/g, "±")
+    .replace(/%%[Cc]/g, "Ø")
+    .trim();
+}
+
 /** Build a neutral token list from a line number string */
 function tokenise(lineNumber: string): string[] {
   return lineNumber
@@ -349,21 +367,29 @@ export function extractEngineeringData(
       // OPC value pattern: "FROM ...", "TO ...", "CONT FROM", "CONTINUED TO" etc.
       const OPC_VALUE_RE = /^(?:FROM|TO|CONT(?:INUED)?\s+(?:FROM|TO)|FROM\s+DWG|TO\s+DWG)\b/i;
 
+      // Equipment tag pattern: EQLINE1, EQNAME1, EQNAME2, EQNAME3, EQNO, EQTAG etc.
+      const EQUIPMENT_TAG_RE = /^EQ/i;
+
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
         const valTrim = attr.value.trim();
         const isInstrAttr = INSTRUMENT_ATTR_TAGS.has(tagUpper);
         const isOpcAttr = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
+        const isEquipAttr = EQUIPMENT_TAG_RE.test(tagUpper);
         const classified = classifyText(attr.value);
-        const detectedType = isInstrAttr ? "INSTRUMENTS"
-                           : isOpcAttr   ? "OPC"
-                           :               classified.textClass;
+        const detectedType = isInstrAttr  ? "INSTRUMENTS"
+                           : isOpcAttr    ? "OPC"
+                           : isEquipAttr  ? "EQUIPMENT"
+                           :                classified.textClass;
+
+        // Strip AutoCAD formatting codes (%%U etc.) from displayed value
+        const cleanValue = stripDxfCodes(attr.value);
 
         rawRows.push({
           DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
           BLOCK: blockName, Layer: block.layer,
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
-          Attribute_Tag: attr.tag, Attribute_Value: attr.value,
+          Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
         });
       }
@@ -383,6 +409,31 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
+          });
+        }
+      }
+
+      // If this block contains EQ* attributes, add one combined EQUIPMENT summary row
+      // EQLINE1 → Equipment Tag (e.g. 602-DR-01A/B after stripping %%U)
+      // EQNAME1 + EQNAME2 + EQNAME3 → Equipment Name (combined)
+      const hasEquipAttr = attrs.some((a) => EQUIPMENT_TAG_RE.test(a.tag.toUpperCase().trim()));
+      if (hasEquipAttr) {
+        const eqMap: Record<string, string> = {};
+        for (const a of attrs) {
+          eqMap[a.tag.toUpperCase().trim()] = stripDxfCodes(a.value);
+        }
+        const eqTag  = eqMap["EQLINE1"] || eqMap["EQNO"] || eqMap["EQTAG"] || "";
+        const eqName = [eqMap["EQNAME1"], eqMap["EQNAME2"], eqMap["EQNAME3"]]
+          .filter(Boolean).join(" ").trim();
+        const eqDisplay = [eqTag, eqName].filter(Boolean).join(" — ");
+        if (eqDisplay) {
+          rawRows.push({
+            DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
+            BLOCK: blockName, Layer: block.layer,
+            X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
+            Attribute_Tag: "EQUIPMENT",
+            Attribute_Value: eqDisplay,
+            Raw_Text: "", Detected_Type: "EQUIPMENT",
           });
         }
       }
