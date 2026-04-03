@@ -104,7 +104,8 @@ const INSTRUMENT_TAG_RE = /^([A-Z]{1,4})-(\d{2,5}[A-Z]?)$/;
 
 // Line number patterns (common P&ID formats):
 // 4"-P-101-A1A, 6"-CS-2001-B2B, 2"-N2-301, 12"-FW-1001-A1A-INS
-const LINE_NUMBER_RE = /^\d{1,4}["']?[-–]\s*[A-Z]{1,4}[-–]\s*\d{2,6}(?:[-–][A-Z0-9]{2,6}){0,3}$/i;
+// X"-P-602-2104-D1D, X"-LF-602-2107-A2A  (X = unknown/TBD nominal size)
+const LINE_NUMBER_RE = /^(?:\d{1,4}|[A-Z]{1,3})["']?[-–]\s*[A-Z]{1,4}[-–]\s*\d{2,6}(?:[-–][A-Z0-9]{2,6}){0,3}$/i;
 
 // Size patterns: 4", 4IN, DN100, NPS 6, 2" x 1"
 const SIZE_RE = /^(?:(?:\d{1,3}(?:\.\d+)?["']?\s*(?:x\s*\d{1,3}(?:\.\d+)?["']?)?)|(?:DN\s*\d{1,4})|(?:NPS\s*\d{1,3})|(?:\d{1,3}\s*(?:mm|in|inch)))$/i;
