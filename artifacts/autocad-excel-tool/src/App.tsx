@@ -1018,6 +1018,20 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
         </div>
       </div>
 
+      {/* OLE Warning */}
+      <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm flex gap-3">
+        <span className="text-yellow-400 text-lg shrink-0">⚠</span>
+        <div className="text-yellow-300 space-y-1">
+          <div className="font-semibold">DXF mein embedded Excel (OLE) object hai toh:</div>
+          <div className="text-yellow-300/80">
+            Write-back ke baad AutoCAD mein blank Excel auto-open ho sakti hai. Fix: AutoCAD mein
+            affected file open karke <strong className="text-yellow-200">AUDIT</strong> command run karo
+            → "Fix errors? Yes" → save karo. Ya <strong className="text-yellow-200">WBLOCK</strong> se
+            clean export lo.
+          </div>
+        </div>
+      </div>
+
       {/* Step 1: Folder selection */}
       <div className="space-y-2">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
