@@ -63,7 +63,7 @@ export interface RawRow {
   Y: number;
   Attribute_Tag: string;
   Attribute_Value: string;
-  Block_Handle: string;   // INSERT entity handle — use HANDLE command in AutoCAD to jump to this block
+  Instrument_Tag: string; // Detected tag for PDF search e.g. "FT-2104", "TT-2411", "PG" (blank for non-instruments)
   Raw_Text: string;
   Detected_Type: string;
 }
@@ -277,8 +277,9 @@ function detectInstrument(
     // 2. Scan ALL values for a numeric-looking one
     const numericVal = allValues.find((x) => LOOP_NUM_RE.test(x.trim()));
     if (numericVal) return numericVal.trim();
-    // 3. Try block name itself — extract number (e.g. "PG-2401" → "2401")
-    const blockNumMatch = blockName.match(/\d{3,5}[A-Z]?/);
+    // 3. Try block name itself — only real engineering loop numbers (4+ digits)
+    //    e.g. "PG-2401" → "2401"  but NOT "PG-001" (AutoCAD sequential, not a loop number)
+    const blockNumMatch = blockName.match(/\d{4,5}[A-Z]?/);
     if (blockNumMatch) return blockNumMatch[0];
     return "";
   }
@@ -481,7 +482,7 @@ export function extractEngineeringData(
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
         Attribute_Tag: "", Attribute_Value: noAttrInstrType, Raw_Text: "",
         Detected_Type: noAttrDetected,
-        Block_Handle: block.handle || "",
+        Instrument_Tag: noAttrInstrType,
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -583,7 +584,7 @@ export function extractEngineeringData(
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
-          Block_Handle: block.handle || "",
+          Instrument_Tag: blockFullTag,
         });
       }
 
@@ -602,7 +603,7 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
-            Block_Handle: block.handle || "",
+            Instrument_Tag: instrMatch.display,
           });
         }
       }
@@ -628,7 +629,7 @@ export function extractEngineeringData(
             Attribute_Tag: "EQUIPMENT",
             Attribute_Value: eqDisplay,
             Raw_Text: "", Detected_Type: "EQUIPMENT",
-            Block_Handle: block.handle || "",
+            Instrument_Tag: eqDisplay,
           });
         }
       }
@@ -748,7 +749,7 @@ export function extractEngineeringData(
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
       Raw_Text: text.content, Detected_Type: rawDetectedType,
-      Block_Handle: "",
+      Instrument_Tag: "",
     });
 
     const cleanVal = classified.clean;
