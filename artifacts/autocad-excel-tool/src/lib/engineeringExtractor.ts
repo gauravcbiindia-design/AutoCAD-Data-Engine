@@ -90,36 +90,55 @@ export interface ExtractionResult {
 // ── Instrument type master list ────────────────────────────────────────────────
 
 const INSTRUMENT_TYPES: Record<string, string> = {
+  // ── Flow ──────────────────────────────────────────────────────────────────────
   FT:"Flow Transmitter", FI:"Flow Indicator", FE:"Flow Element",
   FIC:"Flow Indicating Controller", FRC:"Flow Recording Controller",
-  FC:"Flow Controller", FCV:"Flow Control Valve",
-  FSH:"Flow Switch High", FSL:"Flow Switch Low",
-  PT:"Pressure Transmitter", PI:"Pressure Indicator",
+  FC:"Flow Controller", FCV:"Flow Control Valve", FY:"Flow Computing/Relay",
+  FSH:"Flow Switch High", FSL:"Flow Switch Low", FQI:"Flow Quantity Indicator",
+  FAH:"Flow Alarm High", FAL:"Flow Alarm Low",
+  FAHH:"Flow Alarm High High", FALL:"Flow Alarm Low Low",
+  // ── Pressure ──────────────────────────────────────────────────────────────────
+  PT:"Pressure Transmitter", PI:"Pressure Indicator", PDI:"Pressure Diff Indicator",
   PIC:"Pressure Indicating Controller", PCV:"Pressure Control Valve",
   PSV:"Pressure Safety Valve", PRV:"Pressure Relief Valve",
   PSH:"Pressure Switch High", PSL:"Pressure Switch Low", PG:"Pressure Gauge",
-  LT:"Level Transmitter", LI:"Level Indicator",
+  PAH:"Pressure Alarm High", PAL:"Pressure Alarm Low",
+  PAHH:"Pressure Alarm High High", PALL:"Pressure Alarm Low Low",
+  // ── Level ─────────────────────────────────────────────────────────────────────
+  LT:"Level Transmitter", LI:"Level Indicator", LC:"Level Controller",
   LIC:"Level Indicating Controller", LCV:"Level Control Valve",
   LSH:"Level Switch High", LSL:"Level Switch Low", LG:"Level Gauge",
+  LAH:"Level Alarm High", LAL:"Level Alarm Low",
+  LAHH:"Level Alarm High High", LALL:"Level Alarm Low Low",
+  // ── Temperature ───────────────────────────────────────────────────────────────
   TT:"Temperature Transmitter", TI:"Temperature Indicator",
   TC:"Temperature Controller", TIC:"Temperature Indicating Controller",
-  TE:"Temperature Element", TW:"Thermowell",
+  TE:"Temperature Element", TW:"Thermowell", TG:"Temperature Gauge",
   TSH:"Temperature Switch High", TSL:"Temperature Switch Low",
+  TAH:"Temperature Alarm High", TAL:"Temperature Alarm Low",
+  TAHH:"Temperature Alarm High High", TALL:"Temperature Alarm Low Low",
+  // ── Analytical ────────────────────────────────────────────────────────────────
   AT:"Analytical Transmitter", AI:"Analytical Indicator",
   AIC:"Analytical Indicating Controller",
+  AAH:"Analytical Alarm High", AAL:"Analytical Alarm Low",
+  // ── Valves / On-Off ───────────────────────────────────────────────────────────
   XV:"On/Off Valve", XCV:"Control Valve", HV:"Hand Valve",
   BV:"Ball Valve", GV:"Gate Valve", CV:"Check Valve",
   MV:"Motor Valve", SDV:"Shutdown Valve", BDV:"Blowdown Valve",
   MOV:"Motor Operated Valve", SOV:"Solenoid Valve",
-  HS:"Hand Switch", HIC:"Hand Indicating Controller",
-  S:"Solenoid / Instrument (S)",
-  XZSOC:"Instrument (XZSOC)",
+  // ── Hand / Manual ─────────────────────────────────────────────────────────────
+  HS:"Hand Switch", HC:"Hand Controller", HIC:"Hand Indicating Controller",
+  // ── Position / Speed / Special ────────────────────────────────────────────────
   ZT:"Position Transmitter", ZI:"Position Indicator",
   ST:"Speed Transmitter", SI:"Speed Indicator",
   VT:"Vibration Transmitter", VI:"Vibration Indicator",
   WT:"Weight Transmitter", WI:"Weight Indicator",
-  JT:"Power Transmitter", PV:"Process Valve",
-  TV:"Temperature Valve", LV:"Level Valve", FV:"Flow Valve",
+  JT:"Power Transmitter",
+  PV:"Process Valve", TV:"Temperature Valve", LV:"Level Valve", FV:"Flow Valve",
+  S:"Solenoid / Instrument (S)",
+  // ── Project-specific compound types ───────────────────────────────────────────
+  XZSOC:"Instrument (XZSOC)", X2LOC:"Local Control (X2LOC)",
+  XZLOC:"Local Control (XZLOC)", X2SOC:"Instrument (X2SOC)",
 };
 
 // ── Component / valve body type list ──────────────────────────────────────────
@@ -467,7 +486,11 @@ export function extractEngineeringData(
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
-      const INSTRUMENT_ATTR_TAGS = new Set(["TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCTN", "FUNCTION"]);
+      // SUBFIX/SUFFIX = alarm suffix tag (e.g. PDI-2104-H where SUBFIX="H")
+      const INSTRUMENT_ATTR_TAGS = new Set([
+        "TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCTN", "FUNCTION",
+        "SUBFIX", "SUFFIX",
+      ]);
 
       // OPC connector tag pattern: DA1001, DA1002, DB2001, etc. (2 letters + 3-6 digits)
       const OPC_TAG_RE = /^D[A-Z]\d{3,6}$/i;
@@ -491,6 +514,7 @@ export function extractEngineeringData(
       const INSTR_NUMBER_ATTR_TAGS = new Set([
         "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
         "TAG", "ITEM", "ITEM_NO", "MID", "MIDATTR", "LOOP", "LOOP_NO",
+        "SUBFIX", "SUFFIX",
       ]);
       // Block has an instrument type — via standard attr tags OR via block name (e.g. "PG", "TG")
       // blockInstrMatch uses 4-pass detection including block name prefix, so if it's non-null
@@ -499,6 +523,10 @@ export function extractEngineeringData(
         blockInstrMatch !== null ||
         attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim()))
       );
+      // Interlock block: any attribute value is an interlock code (Z, I, IL, etc.)
+      // → mark ALL attributes (including blank TOP/MIDDLE/BOTTOM) as INTERLOCK
+      const blockHasInterlockValue = !blockIsTitleBlock &&
+        attrs.some((a) => isInterlockCode(a.value.trim()));
       // Valve block: has TOP/BOTTOM/MID structure but NO instrument type value anywhere in block
       // e.g. gate valves, ball valves, control valves that look like instrument blocks but are blank
       const blockHasAnyInstrValue = (blockInstrMatch !== null) || attrs.some((a) => {
@@ -506,6 +534,7 @@ export function extractEngineeringData(
         return v.length > 0 && isInstrumentType(v);
       });
       const blockIsValve = !blockIsTitleBlock && !blockHasInstrType && !blockHasAnyInstrValue
+        && !blockHasInterlockValue
         && attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()));
 
       for (const attr of attrs) {
@@ -528,18 +557,20 @@ export function extractEngineeringData(
         // Blank NUMBER/BOTTOM/TAGNO attr in an instrument block → keep for engineer to fill in
         const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
         const classified   = classifyText(attr.value);
-        const detectedType = blockIsTitleBlock  ? "TITLE_BLOCK"
-                           : blockIsValve      ? "VALVES"        // blank TOP/BOTTOM/MID block = valve symbol
-                           : isAlarmValue     ? "ALARM"          // before isInstrAttr so H/L on TOP → ALARM
-                           : isInterlockValue ? "INTERLOCK"      // before isInstrAttr so Z/I on TOP → INTERLOCK
-                           : isBlankInstrSlot ? "INSTRUMENTS"
-                           : isInstrAttr      ? "INSTRUMENTS"
-                           : isOpcAttr        ? "OPC"
-                           : isEquipAttr      ? "EQUIPMENT"
-                           : isInstrNum       ? "INSTRUMENTS"
-                           : isInstrValue     ? "INSTRUMENTS"
-                           : isCompValue      ? "COMPONENTS"
-                           :                    classified.textClass;
+        const detectedType = blockIsTitleBlock           ? "TITLE_BLOCK"
+                           : blockHasInterlockValue   ? "INTERLOCK"   // whole Z-block = INTERLOCK (blank attrs too)
+                           : blockIsValve             ? "VALVES"      // blank TOP/BOTTOM/MID = valve symbol
+                           : isInstrAttr && isInstrValue ? "INSTRUMENTS" // TOP=TAHH/LC/FY → INSTRUMENTS before alarm check
+                           : isAlarmValue             ? "ALARM"       // standalone H/L/HH alarm code
+                           : isInterlockValue         ? "INTERLOCK"   // standalone Z/I interlock code
+                           : isBlankInstrSlot         ? "INSTRUMENTS"
+                           : isInstrAttr              ? "INSTRUMENTS"
+                           : isOpcAttr                ? "OPC"
+                           : isEquipAttr              ? "EQUIPMENT"
+                           : isInstrNum               ? "INSTRUMENTS"
+                           : isInstrValue             ? "INSTRUMENTS"
+                           : isCompValue              ? "COMPONENTS"
+                           :                            classified.textClass;
 
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value
         const cleanValue = stripDxfCodes(attr.value);
