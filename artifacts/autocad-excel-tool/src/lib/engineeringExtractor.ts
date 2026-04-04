@@ -63,7 +63,6 @@ export interface RawRow {
   Y: number;
   Attribute_Tag: string;
   Attribute_Value: string;
-  Instrument_Tag: string; // Detected tag for PDF search e.g. "FT-2104", "TT-2411", "PG" (blank for non-instruments)
   Raw_Text: string;
   Detected_Type: string;
 }
@@ -482,7 +481,6 @@ export function extractEngineeringData(
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
         Attribute_Tag: "", Attribute_Value: noAttrInstrType, Raw_Text: "",
         Detected_Type: noAttrDetected,
-        Instrument_Tag: noAttrInstrType,
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -584,7 +582,6 @@ export function extractEngineeringData(
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
-          Instrument_Tag: blockFullTag,
         });
       }
 
@@ -603,7 +600,6 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
-            Instrument_Tag: instrMatch.display,
           });
         }
       }
@@ -629,7 +625,6 @@ export function extractEngineeringData(
             Attribute_Tag: "EQUIPMENT",
             Attribute_Value: eqDisplay,
             Raw_Text: "", Detected_Type: "EQUIPMENT",
-            Instrument_Tag: eqDisplay,
           });
         }
       }
@@ -749,7 +744,6 @@ export function extractEngineeringData(
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
       Raw_Text: text.content, Detected_Type: rawDetectedType,
-      Instrument_Tag: "",
     });
 
     const cleanVal = classified.clean;
