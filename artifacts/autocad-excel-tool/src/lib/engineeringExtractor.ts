@@ -488,6 +488,14 @@ export function extractEngineeringData(
       const blockHasInstrType = !blockIsTitleBlock && attrs.some(
         (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim())
       );
+      // Valve block: has TOP/BOTTOM/MID structure but NO instrument type value anywhere in block
+      // e.g. gate valves, ball valves, control valves that look like instrument blocks but are blank
+      const blockHasAnyInstrValue = attrs.some((a) => {
+        const v = a.value.trim();
+        return v.length > 0 && isInstrumentType(v);
+      });
+      const blockIsValve = !blockIsTitleBlock && !blockHasInstrType && !blockHasAnyInstrValue
+        && attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()));
 
       for (const attr of attrs) {
         const tagUpper = attr.tag.toUpperCase().trim();
@@ -510,8 +518,9 @@ export function extractEngineeringData(
         const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock  ? "TITLE_BLOCK"
-                           : isAlarmValue     ? "ALARM"        // before isInstrAttr so H/L on TOP → ALARM
-                           : isInterlockValue ? "INTERLOCK"    // before isInstrAttr so Z/I on TOP → INTERLOCK
+                           : blockIsValve      ? "VALVES"        // blank TOP/BOTTOM/MID block = valve symbol
+                           : isAlarmValue     ? "ALARM"          // before isInstrAttr so H/L on TOP → ALARM
+                           : isInterlockValue ? "INTERLOCK"      // before isInstrAttr so Z/I on TOP → INTERLOCK
                            : isBlankInstrSlot ? "INSTRUMENTS"
                            : isInstrAttr      ? "INSTRUMENTS"
                            : isOpcAttr        ? "OPC"

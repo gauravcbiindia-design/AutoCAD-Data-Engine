@@ -32,7 +32,7 @@ export const RAW_COLUMNS = [
 export function buildRawCsvString(result: ExtractionResult): string {
   const SKIP_VALUES = new Set(["", "n/a", "none", "na"]);
   // These detected types are always kept regardless of blank/N/A values
-  const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS", "EQUIPMENT", "COMPONENTS", "ALARM", "INTERLOCK"]);
+  const ALWAYS_KEEP = new Set(["OPC", "INSTRUMENTS", "EQUIPMENT", "COMPONENTS", "VALVES", "ALARM", "INTERLOCK"]);
 
   // These types are noise — never include in export
   const NEVER_EXPORT = new Set(["TITLE_BLOCK", "BLOCK", "GARBAGE"]);
