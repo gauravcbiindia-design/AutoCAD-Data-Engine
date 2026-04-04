@@ -17,7 +17,7 @@ export interface FileParsedResult {
 
 export const RAW_COLUMNS = [
   "DWG", "HANDLE", "Entity_Type", "BLOCK", "Layer",
-  "X", "Y", "Attribute_Tag", "Attribute_Value", "Full_Tag", "Context_Tag", "Raw_Text", "Detected_Type",
+  "X", "Y", "Attribute_Tag", "Attribute_Value", "Raw_Text", "Detected_Type",
 ] as const;
 
 // ── CSV builder ────────────────────────────────────────────────────────────────
