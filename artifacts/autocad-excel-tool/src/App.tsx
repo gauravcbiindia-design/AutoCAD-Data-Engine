@@ -123,6 +123,7 @@ type FileStatus = "pending" | "processing" | "done" | "error";
 interface FileEntry {
   file: File;
   status: FileStatus;
+  selected: boolean;
   result?: FileParsedResult;
   error?: string;
   blockCount?: number;
@@ -294,7 +295,7 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
       const existing = new Set(prev.map((e) => e.file.name));
       const fresh: FileEntry[] = arr
         .filter((f) => !existing.has(f.name))
-        .map((file) => ({ file, status: "pending" }));
+        .map((file) => ({ file, status: "pending", selected: true }));
       return [...prev, ...fresh];
     });
   };
@@ -338,6 +339,19 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     setResult(null);
   };
 
+  const toggleSelected = (name: string) => {
+    setEntries((prev) =>
+      prev.map((e) => e.file.name === name && e.status === "pending"
+        ? { ...e, selected: !e.selected } : e)
+    );
+  };
+
+  const toggleAllSelected = (val: boolean) => {
+    setEntries((prev) =>
+      prev.map((e) => e.status === "pending" ? { ...e, selected: val } : e)
+    );
+  };
+
   const processAll = async () => {
     setIsProcessing(true);
     setResult(null);
@@ -345,6 +359,9 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     const perFile: { dwgName: string; rawRows: any[]; engineerRows: any[]; lineTokens: any[]; textReviewRows: any[]; drawingMetaRows: any[] }[] = [];
 
     for (let i = 0; i < updated.length; i++) {
+      // Skip files that are not selected or already processed
+      if (!updated[i].selected || updated[i].status !== "pending") continue;
+
       updated[i] = { ...updated[i], status: "processing" };
       setEntries([...updated]);
 
@@ -415,8 +432,10 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
   const doneCount = entries.filter((e) => e.status === "done").length;
   const errorCount = entries.filter((e) => e.status === "error").length;
   const pendingCount = entries.filter((e) => e.status === "pending").length;
+  const selectedPendingCount = entries.filter((e) => e.status === "pending" && e.selected).length;
+  const allPendingSelected = pendingCount > 0 && pendingCount === selectedPendingCount;
   const hasFiles = entries.length > 0;
-  const allDone = hasFiles && entries.every((e) => e.status === "done" || e.status === "error");
+  const allDone = !isProcessing && (doneCount + errorCount) > 0;
 
   return (
     <div className="space-y-6">
@@ -496,20 +515,50 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               Files ({entries.length})
             </h3>
-            {!isProcessing && (
-              <button onClick={() => { setEntries([]); setResult(null); }}
-                className="text-xs text-muted-foreground hover:text-destructive transition-colors">
-                Clear all
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {!isProcessing && pendingCount > 0 && (
+                <button onClick={() => toggleAllSelected(!allPendingSelected)}
+                  className="text-xs text-primary hover:underline transition-colors">
+                  {allPendingSelected ? "Deselect All" : "Select All"}
+                </button>
+              )}
+              {!isProcessing && (
+                <button onClick={() => { setEntries([]); setResult(null); }}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
             {entries.map((entry) => (
-              <div key={entry.file.name} className="flex items-center gap-3 px-4 py-3 bg-card hover:bg-muted/20 transition-colors">
-                <StatusIcon status={entry.status} />
+              <div key={entry.file.name}
+                className={`flex items-center gap-3 px-4 py-3 bg-card transition-colors
+                  ${entry.status === "pending" && !isProcessing ? "hover:bg-muted/30 cursor-pointer" : "hover:bg-muted/20"}`}
+                onClick={() => { if (entry.status === "pending" && !isProcessing) toggleSelected(entry.file.name); }}>
+
+                {/* Checkbox for pending files, StatusIcon for others */}
+                {entry.status === "pending" && !isProcessing ? (
+                  <div onClick={(e) => { e.stopPropagation(); toggleSelected(entry.file.name); }}
+                    className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors
+                      ${entry.selected
+                        ? "border-primary bg-primary"
+                        : "border-muted-foreground bg-transparent"}`}>
+                    {entry.selected && (
+                      <svg className="w-3 h-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                ) : (
+                  <StatusIcon status={entry.status} />
+                )}
+
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{entry.file.name.replace(/\.dxf$/i, "")}</p>
+                  <p className={`text-sm font-medium truncate ${entry.status === "pending" && !entry.selected && !isProcessing ? "text-muted-foreground" : ""}`}>
+                    {entry.file.name.replace(/\.dxf$/i, "")}
+                  </p>
                   {entry.status === "done" && (
                     <p className="text-xs text-muted-foreground">
                       {entry.blockCount} blocks · {entry.textCount} text entities
@@ -517,12 +566,12 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
                   )}
                   {entry.status === "error" && <p className="text-xs text-destructive">{entry.error}</p>}
                   {entry.status === "pending" && (
-                    <p className="text-xs text-muted-foreground">{(entry.file.size / 1024).toFixed(0)} KB · Waiting</p>
+                    <p className="text-xs text-muted-foreground">{(entry.file.size / 1024).toFixed(0)} KB · {entry.selected ? "Ready" : "Skipped"}</p>
                   )}
                   {entry.status === "processing" && <p className="text-xs text-primary animate-pulse">Extracting...</p>}
                 </div>
                 {!isProcessing && (
-                  <button onClick={() => removeEntry(entry.file.name)}
+                  <button onClick={(e) => { e.stopPropagation(); removeEntry(entry.file.name); }}
                     className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -555,12 +604,12 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
           {/* Action buttons */}
           <div className="flex gap-3 flex-wrap">
             {!allDone && pendingCount > 0 && (
-              <button onClick={processAll} disabled={isProcessing}
+              <button onClick={processAll} disabled={isProcessing || selectedPendingCount === 0}
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
                 {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Extracting {pendingCount} file{pendingCount !== 1 ? "s" : ""}...
+                    Extracting...
                   </>
                 ) : (
                   <>
@@ -568,7 +617,7 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Extract {pendingCount} File{pendingCount !== 1 ? "s" : ""}
+                    Extract {selectedPendingCount} of {pendingCount} File{pendingCount !== 1 ? "s" : ""}
                   </>
                 )}
               </button>
