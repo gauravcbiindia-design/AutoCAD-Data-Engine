@@ -450,12 +450,20 @@ export function extractEngineeringData(
 
     // Raw rows (one per attribute, or one minimal row if no attrs)
     if (attrs.length === 0) {
+      // Check if block name itself is an instrument type (e.g. PG, TG, PSV)
+      // so these symbol-only blocks (no ATTRIBs) still appear in the export
+      const blockPrefix = blockName.toUpperCase().split(/[-_\s]/)[0];
+      const blockIsTitleBlockNoAttr = isTitleBlock(blockName);
+      const noAttrInstrType = !blockIsTitleBlockNoAttr && blockPrefix.length > 0 && isInstrumentType(blockPrefix)
+        ? blockPrefix : "";
+      const noAttrDetected = noAttrInstrType ? "INSTRUMENTS" : "BLOCK";
       rawRows.push({
         DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
         BLOCK: blockName, Layer: block.layer,
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
-        Attribute_Tag: "", Attribute_Value: "", Raw_Text: "", Detected_Type: "BLOCK",
-        Full_Tag: "", Context_Tag: "",
+        Attribute_Tag: "", Attribute_Value: noAttrInstrType, Raw_Text: "",
+        Detected_Type: noAttrDetected,
+        Full_Tag: noAttrInstrType, Context_Tag: "",
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -484,13 +492,16 @@ export function extractEngineeringData(
         "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
         "TAG", "ITEM", "ITEM_NO", "MID", "MIDATTR", "LOOP", "LOOP_NO",
       ]);
-      // Block has an instrument type in TOP/FUNCTN etc. (engineer needs to fill BOTTOM)
-      const blockHasInstrType = !blockIsTitleBlock && attrs.some(
-        (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim())
+      // Block has an instrument type — via standard attr tags OR via block name (e.g. "PG", "TG")
+      // blockInstrMatch uses 4-pass detection including block name prefix, so if it's non-null
+      // the block IS an instrument even if attributes are all blank or use non-standard tag names
+      const blockHasInstrType = !blockIsTitleBlock && (
+        blockInstrMatch !== null ||
+        attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim()))
       );
       // Valve block: has TOP/BOTTOM/MID structure but NO instrument type value anywhere in block
       // e.g. gate valves, ball valves, control valves that look like instrument blocks but are blank
-      const blockHasAnyInstrValue = attrs.some((a) => {
+      const blockHasAnyInstrValue = (blockInstrMatch !== null) || attrs.some((a) => {
         const v = a.value.trim();
         return v.length > 0 && isInstrumentType(v);
       });
