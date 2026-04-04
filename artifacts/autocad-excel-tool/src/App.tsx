@@ -358,64 +358,68 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     const updated = [...entries];
     const perFile: { dwgName: string; rawRows: any[]; engineerRows: any[]; lineTokens: any[]; textReviewRows: any[]; drawingMetaRows: any[] }[] = [];
 
-    for (let i = 0; i < updated.length; i++) {
-      // Skip files that are not selected or already processed
-      if (!updated[i].selected || updated[i].status !== "pending") continue;
+    // Create ONE shared worker — compiled once, processes all files sequentially.
+    // Avoids repeated JS compilation cost on each file (the main cause of freezing).
+    const worker = new Worker(
+      new URL("./lib/dxfWorker.ts", import.meta.url),
+      { type: "module" }
+    );
 
-      updated[i] = { ...updated[i], status: "processing" };
-      setEntries([...updated]);
+    try {
+      for (let i = 0; i < updated.length; i++) {
+        // Skip files that are not selected or already processed
+        if (!updated[i].selected || updated[i].status !== "pending") continue;
 
-      // Step 1: read file as text (async, non-blocking)
-      const content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = () => reject(new Error("Could not read file"));
-        reader.readAsText(updated[i].file);
-      });
+        updated[i] = { ...updated[i], status: "processing" };
+        setEntries([...updated]);
 
-      // Step 2: parse + extract in a Web Worker so the UI never freezes
-      await new Promise<void>((resolve) => {
-        const worker = new Worker(
-          new URL("./lib/dxfWorker.ts", import.meta.url),
-          { type: "module" }
-        );
+        // Step 1: read file as text (async, non-blocking via FileReader)
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => reject(new Error("Could not read file"));
+          reader.readAsText(updated[i].file);
+        });
 
-        worker.onmessage = (e) => {
-          const data = e.data;
-          if (data.type === "done") {
-            const dwgName = data.dwgName;
-            updated[i] = {
-              ...updated[i],
-              status: "done",
-              blockCount: data.blockCount,
-              textCount: data.textCount,
-            };
-            perFile.push({
-              dwgName,
-              rawRows: data.rawRows,
-              engineerRows: data.engineerRows,
-              lineTokens: data.lineTokens,
-              textReviewRows: data.textReviewRows,
-              drawingMetaRows: data.drawingMetaRows,
-            });
-          } else {
-            updated[i] = { ...updated[i], status: "error", error: data.message };
-          }
-          setEntries([...updated]);
-          worker.terminate();
-          resolve();
-        };
-
-        worker.onerror = (e) => {
-          updated[i] = { ...updated[i], status: "error", error: e.message ?? "Worker error" };
-          setEntries([...updated]);
-          worker.terminate();
-          resolve();
-        };
-
+        // Step 2: parse + extract in the shared Worker (never blocks the UI)
         const dwgName = updated[i].file.name.replace(/\.dxf$/i, "");
-        worker.postMessage({ type: "parse", dwgName, content });
-      });
+        await new Promise<void>((resolve) => {
+          worker.onmessage = (e) => {
+            const data = e.data;
+            if (data.type === "done") {
+              updated[i] = {
+                ...updated[i],
+                status: "done",
+                blockCount: data.blockCount,
+                textCount: data.textCount,
+              };
+              perFile.push({
+                dwgName: data.dwgName,
+                rawRows: data.rawRows,
+                engineerRows: data.engineerRows,
+                lineTokens: data.lineTokens,
+                textReviewRows: data.textReviewRows,
+                drawingMetaRows: data.drawingMetaRows,
+              });
+            } else {
+              updated[i] = { ...updated[i], status: "error", error: data.message };
+            }
+            setEntries([...updated]);
+            resolve(); // worker stays alive for the next file
+          };
+
+          worker.onerror = (e) => {
+            updated[i] = { ...updated[i], status: "error", error: e.message ?? "Worker error" };
+            setEntries([...updated]);
+            resolve();
+          };
+
+          worker.postMessage({ type: "parse", dwgName, content });
+        });
+      }
+    } finally {
+      // Always clean up the shared worker after all files are done
+      worker.terminate();
     }
 
     const merged = mergeAndPostProcess(perFile);
