@@ -204,6 +204,15 @@ export function parseRawExport(buffer: ArrayBuffer): ParsedExcelResult {
  *
  * Returns the modified DXF text and a count of replacements made.
  */
+/**
+ * Returns true if the DXF content contains embedded OLE objects (OLE2FRAME / OLEFRAME).
+ * These are Excel/Word/etc. objects embedded directly in the drawing.
+ * Write-back on such files may cause AutoCAD to launch blank OLE applications.
+ */
+export function dxfHasOleObjects(dxfText: string): boolean {
+  return /^\s*(OLE2FRAME|OLEFRAME)\s*$/im.test(dxfText);
+}
+
 export function patchDxfContent(
   originalDxf: string,
   patches: DwgPatchMap

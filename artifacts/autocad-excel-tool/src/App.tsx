@@ -13,7 +13,7 @@ import {
 import { exportRawCsv, buildRawCsvString } from "@/lib/excelExport";
 import {
   parseRawExport, parseRawExportCsv, patchDxfContent,
-  readDxfFromFolder, writeUpdatedDxf,
+  readDxfFromFolder, writeUpdatedDxf, dxfHasOleObjects,
   type ParsedExcelResult,
 } from "@/lib/excelToDxf";
 
@@ -859,6 +859,7 @@ interface DwgResult {
   replacements: number;
   error?: string;
   outputName?: string;
+  oleWarning?: boolean;  // true if DXF had embedded OLE objects
 }
 
 function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
@@ -949,11 +950,12 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
 
       try {
         const originalDxf = await readDxfFromFolder(folderHandle, dwg + ".dxf");
+        const hasOle = dxfHasOleObjects(originalDxf);
         const { patched, replacements } = patchDxfContent(originalDxf, patches);
         const outName = await writeUpdatedDxf(folderHandle, dwg, patched);
         setDwgResults((prev) =>
           prev.map((r) => r.dwg === dwg
-            ? { ...r, status: "done", replacements, outputName: outName }
+            ? { ...r, status: "done", replacements, outputName: outName, oleWarning: hasOle }
             : r
           )
         );
@@ -1175,8 +1177,15 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium font-mono truncate">{dwg}.dxf</div>
                         {result?.status === "done" && (
-                          <div className="text-xs text-green-400">
-                            {result.replacements} values updated — file replaced in-place
+                          <div className="space-y-0.5">
+                            <div className="text-xs text-green-400">
+                              {result.replacements} values updated — file replaced in-place
+                            </div>
+                            {result.oleWarning && (
+                              <div className="text-xs text-yellow-400 font-medium">
+                                ⚠ Is file mein embedded OLE object hai — AutoCAD mein WBLOCK se clean copy banao
+                              </div>
+                            )}
                           </div>
                         )}
                         {result?.status === "error" && (
