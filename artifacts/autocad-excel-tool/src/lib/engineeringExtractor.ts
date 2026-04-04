@@ -63,7 +63,7 @@ export interface RawRow {
   Y: number;
   Attribute_Tag: string;
   Attribute_Value: string;
-  Instrument_Tag: string; // Detected instrument/valve tag e.g. "TT-2411", "TAHH-2316" (blank if not applicable)
+  Block_Handle: string;   // INSERT entity handle — use HANDLE command in AutoCAD to jump to this block
   Raw_Text: string;
   Detected_Type: string;
 }
@@ -481,7 +481,7 @@ export function extractEngineeringData(
         X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
         Attribute_Tag: "", Attribute_Value: noAttrInstrType, Raw_Text: "",
         Detected_Type: noAttrDetected,
-        Instrument_Tag: noAttrInstrType,
+        Block_Handle: block.handle || "",
       });
     } else {
       // Tags that identify instrument data in P&ID blocks
@@ -583,7 +583,7 @@ export function extractEngineeringData(
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Raw_Text: "", Detected_Type: detectedType,
-          Instrument_Tag: blockFullTag,
+          Block_Handle: block.handle || "",
         });
       }
 
@@ -602,7 +602,7 @@ export function extractEngineeringData(
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
             Raw_Text: "", Detected_Type: "INSTRUMENTS",
-            Instrument_Tag: instrMatch.display,
+            Block_Handle: block.handle || "",
           });
         }
       }
@@ -628,7 +628,7 @@ export function extractEngineeringData(
             Attribute_Tag: "EQUIPMENT",
             Attribute_Value: eqDisplay,
             Raw_Text: "", Detected_Type: "EQUIPMENT",
-            Instrument_Tag: eqDisplay,
+            Block_Handle: block.handle || "",
           });
         }
       }
@@ -748,7 +748,7 @@ export function extractEngineeringData(
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
       Raw_Text: text.content, Detected_Type: rawDetectedType,
-      Instrument_Tag: "",
+      Block_Handle: "",
     });
 
     const cleanVal = classified.clean;
