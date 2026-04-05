@@ -156,32 +156,46 @@ interface StreamMatch {
   description: string;
 }
 
-function detectStream(blockName: string, attrs: { tag: string; value: string }[]): StreamMatch | null {
+// Prompt text that reliably identifies a stream attribute
+const STREAM_PROMPT_RE = /stream\s*(?:number|no\.?|num|name|desc|#)?/i;
+
+function detectStream(blockName: string, attrs: { tag: string; value: string; prompt?: string }[]): StreamMatch | null {
+  // Primary: any attribute has a prompt containing "STREAM" keyword
+  const hasStreamPrompt = attrs.some((a) => STREAM_PROMPT_RE.test(a.prompt ?? ""));
+  // Secondary: attribute tag names follow LA\d{2,3} pattern
   const hasLaAttrs = attrs.some((a) => LA_STREAM_TAG_RE.test(a.tag.trim()));
+  // Tertiary: block name matches known stream block naming
   const isStreamBlock = STREAM_BLOCK_RE.test(blockName.trim());
 
-  if (!hasLaAttrs && !isStreamBlock) return null;
+  if (!hasStreamPrompt && !hasLaAttrs && !isStreamBlock) return null;
 
-  // Find stream number: numeric value in any LA* attr, or any purely numeric attribute
+  // Find stream number: numeric value in attr with "STREAM NUMBER" prompt first,
+  // then fall back to any numeric-looking value
   const STREAM_NUM_RE = /^\d{2,6}$/;
   let streamNumber = "";
   let description = "";
 
+  // First pass: prefer the attr whose prompt mentions "stream number/no"
+  for (const a of attrs) {
+    const v = a.value.trim();
+    if (!v) continue;
+    if (STREAM_NUM_RE.test(v) && STREAM_PROMPT_RE.test(a.prompt ?? "") && !streamNumber) {
+      streamNumber = v;
+    }
+  }
+
+  // Second pass: fallback to any numeric value if still not found
   for (const a of attrs) {
     const v = a.value.trim();
     if (!v) continue;
     if (STREAM_NUM_RE.test(v) && !streamNumber) {
       streamNumber = v;
-    } else if (!description) {
+    } else if (!STREAM_NUM_RE.test(v) && !description) {
       description = v;
     }
   }
 
-  // Only classify as stream if we have LA* attrs OR block name matches
-  if (hasLaAttrs || isStreamBlock) {
-    return { streamNumber, description };
-  }
-  return null;
+  return { streamNumber, description };
 }
 
 // ── Component / valve body type list ──────────────────────────────────────────
@@ -547,9 +561,10 @@ export function extractEngineeringData(
         IA_ATTR_TAG_RE.test(a.tag.trim()) && isInstrumentType(a.value.trim())
       );
 
-      // LA-numbered stream diamond attribute pattern (LA000, LA001 etc.)
-      // PFD stream diamonds: LA000 = blank description slot, LA001 = stream number
+      // Stream diamond detection — uses prompt text as primary signal (most reliable),
+      // falls back to LA\d{2,3} tag pattern or known stream block names
       const blockHasStreamAttrs = !blockIsTitleBlock && (
+        attrs.some((a) => STREAM_PROMPT_RE.test((a as any).prompt ?? "")) ||
         attrs.some((a) => LA_STREAM_TAG_RE.test(a.tag.trim())) ||
         STREAM_BLOCK_RE.test(blockName.trim())
       );

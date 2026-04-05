@@ -10,6 +10,7 @@ import DxfParser from "dxf-parser";
 export interface BlockAttribute {
   tag: string;
   value: string;
+  prompt?: string;  // attribute prompt text (DXF group code 3) — e.g. "STREAM NUMBER"
   handle?: string;  // individual ATTRIB entity's own DXF handle (for write-back)
 }
 
@@ -67,6 +68,7 @@ interface RawAttrib {
   layer: string;
   tag: string;
   value: string;
+  prompt: string;   // group code 3 — attribute prompt text
   x: number;
   y: number;
 }
@@ -126,7 +128,7 @@ function parseEntitiesSection(pairs: DxfGroupPair[]): {
     }
 
     if (p.code === 0 && p.value === "ATTRIB") {
-      const att: RawAttrib = { layer: "0", tag: "", value: "", x: 0, y: 0 };
+      const att: RawAttrib = { layer: "0", tag: "", value: "", prompt: "", x: 0, y: 0 };
       i++;
       while (i < pairs.length && !(pairs[i].code === 0)) {
         const { code, value } = pairs[i];
@@ -135,6 +137,7 @@ function parseEntitiesSection(pairs: DxfGroupPair[]): {
         else if (code === 8) att.layer = value;
         else if (code === 1) att.value = value;
         else if (code === 2) att.tag = value;
+        else if (code === 3) att.prompt = value;   // attribute prompt text
         else if (code === 10) att.x = parseFloat(value) || 0;
         else if (code === 20) att.y = parseFloat(value) || 0;
         i++;
@@ -253,21 +256,21 @@ export function parseDxf(fileContent: string): ParsedDxfData {
       }
 
       if (pairs[i].code === 0 && pairs[i].value === "ATTRIB" && currentInsertHandle) {
-        // Read attrib — capture handle (code 5), tag (code 2), value (code 1)
+        // Read attrib — capture handle (5), tag (2), value (1), prompt (3)
         let j = i + 1;
-        let tag = "", value = "", attHandle: string | undefined;
+        let tag = "", value = "", prompt = "", attHandle: string | undefined;
         while (j < pairs.length && pairs[j].code !== 0) {
           if (pairs[j].code === 5) attHandle = pairs[j].value;
           else if (pairs[j].code === 2) tag = pairs[j].value;
           else if (pairs[j].code === 1) value = pairs[j].value;
+          else if (pairs[j].code === 3) prompt = pairs[j].value;
           j++;
         }
         if (tag) {
           if (!attribsByOwner.has(currentInsertHandle)) attribsByOwner.set(currentInsertHandle, []);
-          // Only add if not already there
           const existing = attribsByOwner.get(currentInsertHandle)!;
           if (!existing.find((a) => a.tag === tag)) {
-            existing.push({ handle: attHandle, ownerHandle: currentInsertHandle, layer: "0", tag, value, x: 0, y: 0 });
+            existing.push({ handle: attHandle, ownerHandle: currentInsertHandle, layer: "0", tag, value, prompt, x: 0, y: 0 });
           }
         }
         i = j;
@@ -292,7 +295,8 @@ export function parseDxf(fileContent: string): ParsedDxfData {
     const attributes: BlockAttribute[] = attrList.map((a) => ({
       tag: a.tag,
       value: a.value,
-      handle: a.handle,   // ATTRIB entity's own handle — used for DXF write-back
+      prompt: a.prompt || "",  // attribute prompt text — used for stream/type detection
+      handle: a.handle,        // ATTRIB entity's own handle — used for DXF write-back
     }));
 
     blocks.push({
