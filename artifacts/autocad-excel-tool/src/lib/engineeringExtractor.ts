@@ -92,14 +92,15 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   // ── Flow ──────────────────────────────────────────────────────────────────────
   FT:"Flow Transmitter", FI:"Flow Indicator", FE:"Flow Element",
   FIC:"Flow Indicating Controller", FRC:"Flow Recording Controller",
-  FC:"Flow Controller", FCV:"Flow Control Valve", FY:"Flow Computing/Relay",
+  FC:"Flow Controller", FFC:"Feedforward Flow Controller",
+  FCV:"Flow Control Valve", FY:"Flow Computing/Relay",
   FSH:"Flow Switch High", FSL:"Flow Switch Low", FQI:"Flow Quantity Indicator",
   FAH:"Flow Alarm High", FAL:"Flow Alarm Low",
   FAHH:"Flow Alarm High High", FALL:"Flow Alarm Low Low",
   // ── Pressure ──────────────────────────────────────────────────────────────────
   PT:"Pressure Transmitter", PI:"Pressure Indicator", PDI:"Pressure Diff Indicator",
-  PIC:"Pressure Indicating Controller", PCV:"Pressure Control Valve",
-  PSV:"Pressure Safety Valve", PRV:"Pressure Relief Valve",
+  PC:"Pressure Controller", PIC:"Pressure Indicating Controller",
+  PCV:"Pressure Control Valve", PSV:"Pressure Safety Valve", PRV:"Pressure Relief Valve",
   PSH:"Pressure Switch High", PSL:"Pressure Switch Low", PG:"Pressure Gauge",
   PAH:"Pressure Alarm High", PAL:"Pressure Alarm Low",
   PAHH:"Pressure Alarm High High", PALL:"Pressure Alarm Low Low",
@@ -491,6 +492,18 @@ export function extractEngineeringData(
         "SUBFIX", "SUFFIX",
       ]);
 
+      // IA-numbered instrument attribute pattern (IA100, IA101, IA103 etc.)
+      // Used in FSMB001-type instrument blocks:
+      //   IA100 = function code (PC, FC, FFC...)
+      //   IA101 = instrument tag slot (blank — user fills in e.g. "PC-1001")
+      //   IA103 = second instrument tag slot
+      const IA_ATTR_TAG_RE = /^IA\d{2,3}$/i;
+
+      // True if this block uses IA-style attrs and at least one has a known instrument type value
+      const blockHasIaType = !blockIsTitleBlock && attrs.some((a) =>
+        IA_ATTR_TAG_RE.test(a.tag.trim()) && isInstrumentType(a.value.trim())
+      );
+
       // OPC connector tag pattern: DA1001, DA1002, DB2001, etc. (2 letters + 3-6 digits)
       const OPC_TAG_RE = /^D[A-Z]\d{3,6}$/i;
 
@@ -540,6 +553,7 @@ export function extractEngineeringData(
         const tagUpper = attr.tag.toUpperCase().trim();
         const valTrim = attr.value.trim();
         const isInstrAttr  = INSTRUMENT_ATTR_TAGS.has(tagUpper);
+        const isIaAttr     = IA_ATTR_TAG_RE.test(tagUpper); // IA100, IA101, IA103 etc.
         const isOpcAttr    = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
         const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
@@ -555,6 +569,8 @@ export function extractEngineeringData(
         const isInstrNum      = isInstrumentNumber(valTrim);
         // Blank NUMBER/BOTTOM/TAGNO attr in an instrument block → keep for engineer to fill in
         const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
+        // IA-attr in an IA-type block (blank tag slots user needs to fill in)
+        const isIaSlot         = isIaAttr && blockHasIaType;
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock           ? "TITLE_BLOCK"
                            : blockHasInterlockValue   ? "INTERLOCK"   // whole Z-block = INTERLOCK (blank attrs too)
@@ -564,6 +580,7 @@ export function extractEngineeringData(
                            : isInterlockValue         ? "INTERLOCK"   // standalone Z/I interlock code
                            : isBlankInstrSlot         ? "INSTRUMENTS"
                            : isInstrAttr              ? "INSTRUMENTS"
+                           : isIaSlot                 ? "INSTRUMENTS" // IA100/IA101/IA103 slots (incl. blank tag fields)
                            : isOpcAttr                ? "OPC"
                            : isEquipAttr              ? "EQUIPMENT"
                            : isInstrNum               ? "INSTRUMENTS"
@@ -586,12 +603,12 @@ export function extractEngineeringData(
         });
       }
 
-      // If this block contains TOP/BOTTOM/MID attributes, add one combined
-      // INSTRUMENT summary row (e.g. "PG-2104") so users can filter easily
+      // If this block contains TOP/BOTTOM/MID attributes OR IA-style attrs,
+      // add one combined INSTRUMENT summary row (e.g. "PC", "PG-2104")
       const hasInstrAttr = attrs.some(
         (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
       );
-      if (hasInstrAttr && !blockIsTitleBlock) {
+      if ((hasInstrAttr || blockHasIaType) && !blockIsTitleBlock) {
         const instrMatch = detectInstrument(attrs, blockName);
         if (instrMatch) {
           rawRows.push({
