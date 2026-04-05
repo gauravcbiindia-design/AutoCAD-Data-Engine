@@ -590,24 +590,45 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
             into engineering fields, removes garbage, detects duplicates, and exports two Excel files.
           </p>
         </div>
-        {/* Folder select button */}
+        {/* Folder select + reload buttons */}
         {folderApiSupported && (
-          <button
-            onClick={handleSelectFolder}
-            disabled={isProcessing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50"
-            style={{
-              background: folderHandle ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.1)",
-              border: folderHandle ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(99,102,241,0.4)",
-              color: folderHandle ? "#16a34a" : "#6366f1",
-            }}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            {folderHandle ? `📂 ${(folderHandle as any).name}` : "Select Folder"}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleSelectFolder}
+              disabled={isProcessing}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50"
+              style={{
+                background: folderHandle ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.1)",
+                border: folderHandle ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(99,102,241,0.4)",
+                color: folderHandle ? "#16a34a" : "#6366f1",
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+              {folderHandle ? `📂 ${(folderHandle as any).name}` : "Select Folder"}
+            </button>
+            {folderHandle && (
+              <button
+                onClick={reloadFolder}
+                disabled={isProcessing}
+                title="CDE_EXPORT run karne ke baad DXF files reload karein"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg font-medium text-sm transition-all disabled:opacity-50"
+                style={{
+                  background: "rgba(99,102,241,0.1)",
+                  border: "1px solid rgba(99,102,241,0.3)",
+                  color: "#818cf8",
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reload
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -1505,8 +1526,13 @@ function OleRemover() {
         const a = document.createElement("a");
         a.href = url;
         a.download = entry.file.name;
+        a.style.display = "none";
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        // Small delay between files so browser doesn't block multiple downloads
+        await new Promise((r) => setTimeout(r, 400));
         setEntries((prev) =>
           prev.map((e) =>
             e.file.name === entry.file.name ? { ...e, status: "done", removed } : e
