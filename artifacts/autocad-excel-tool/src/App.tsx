@@ -860,7 +860,71 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
   const [dwgResults, setDwgResults] = useState<DwgResult[]>([]);
   const [isApplying, setIsApplying] = useState(false);
   const [allDone, setAllDone] = useState(false);
+  const [lspSaved, setLspSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── CDE_Import.lsp generator ──────────────────────────────────────────────
+  // Generates AutoLISP script that opens each patched DXF and saves it as DWG
+  function buildLspContent(): string {
+    return `;;; ============================================================
+;;; CDE_IMPORT.lsp  —  CAD Data Engine v2
+;;; Batch-converts patched DXF files in this folder back to DWG.
+;;;
+;;; Usage:
+;;;   1. This file is already saved in your DXF folder.
+;;;   2. In AutoCAD, open ANY drawing (or a new blank one).
+;;;   3. Type:  APPLOAD  → browse to CDE_IMPORT.lsp → Load → Close
+;;;      — OR drag CDE_IMPORT.lsp into the AutoCAD window.
+;;;   4. Type:  CDE_IMPORT  → Enter
+;;;   It will open every .dxf in the same folder and save as .dwg
+;;;   (overwrites existing DWG of the same name).
+;;; ============================================================
+
+(defun C:CDE_IMPORT (/ folder files f dxfPath dwgPath acad docs doc n)
+  (vl-load-com)
+  (setq folder (vl-string-right-trim "\\\\" (getvar "DWGPREFIX")))
+  (setq folder (strcat folder "\\\\"))
+  (setq files (vl-directory-files folder "*.dxf" 1))
+  (if (not files)
+    (progn
+      (princ "\\n[CDE] No DXF files found in current folder.\\n")
+      (alert "No DXF files found.\\nMake sure AutoCAD's current folder is where your DXF files are.")
+    )
+    (progn
+      (setq acad (vlax-get-acad-object)
+            docs (vla-get-documents acad)
+            n    0)
+      (foreach f files
+        (setq dxfPath (strcat folder f)
+              dwgPath (strcat folder (vl-filename-base f) ".dwg"))
+        (princ (strcat "\\n[CDE] Opening: " f))
+        (setq doc (vla-open docs dxfPath :vlax-false))
+        (vla-saveas doc dwgPath)
+        (vla-close doc :vlax-false)
+        (princ (strcat "  \\u2192  Saved: " (vl-filename-base f) ".dwg"))
+        (setq n (1+ n))
+      )
+      (princ (strcat "\\n[CDE] Done. " (itoa n) " DWG file(s) updated.\\n"))
+      (alert (strcat "CDE Import complete!\\n" (itoa n) " DXF file(s) saved as DWG."))
+    )
+  )
+  (princ)
+)
+
+(princ "\\n[CDE_IMPORT] Loaded. Type CDE_IMPORT to run.\\n")
+(princ)
+`;
+  }
+
+  async function handleSaveLsp() {
+    if (!folderHandle) return;
+    try {
+      await writeTextToFolder(folderHandle, "CDE_IMPORT.lsp", buildLspContent());
+      setLspSaved(true);
+    } catch {
+      // ignore — browser may deny
+    }
+  }
 
   const processFile = (file: File) => {
     const isCsv = file.name.match(/\.csv$/i);
@@ -969,6 +1033,7 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
     setParseError("");
     setDwgResults([]);
     setAllDone(false);
+    setLspSaved(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -1004,7 +1069,11 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
           </div>
           <div className="flex items-start gap-2">
             <span className="text-primary font-bold shrink-0">4.</span>
-            <span>The app overwrites the <strong className="text-foreground">original .dxf files</strong> in-place — open them directly in your CAD application, no rename needed</span>
+            <span>The app overwrites the <strong className="text-foreground">original .dxf files</strong> in-place — verify in AutoCAD using <strong className="text-foreground">ZOOM → E</strong> then <strong className="text-foreground">ATTEDIT</strong></span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-primary font-bold shrink-0">5.</span>
+            <span><em>(Optional)</em> Click <strong className="text-foreground">Save CDE_IMPORT.lsp</strong> → run it in AutoCAD → DXF files are saved as <strong className="text-foreground">.dwg</strong> in the same folder, replacing originals</span>
           </div>
         </div>
       </div>
@@ -1212,6 +1281,47 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                   DXF files updated — replaced in-place inside <strong>{folderName}</strong>.
+                </div>
+
+                {/* DWG conversion section */}
+                <div className="border-t border-green-500/20 p-3 space-y-2">
+                  <div className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+                    Step 5 — Convert DXF → DWG (optional)
+                  </div>
+                  <div className="text-xs text-green-300/80 space-y-1">
+                    <div>To replace the original <strong className="text-green-200">.dwg</strong> files in the same folder, save the AutoLISP script below, then run it in AutoCAD.</div>
+                  </div>
+
+                  {!lspSaved ? (
+                    <button
+                      onClick={handleSaveLsp}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600/30 hover:bg-green-600/50 border border-green-500/40 rounded-lg text-green-200 text-xs font-medium transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Save CDE_IMPORT.lsp to <strong className="font-semibold">{folderName}</strong>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-green-300">
+                      <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <strong className="text-green-200">CDE_IMPORT.lsp</strong> saved to <strong className="text-green-200">{folderName}</strong>
+                    </div>
+                  )}
+
+                  {lspSaved && (
+                    <div className="rounded-lg bg-black/30 border border-green-500/20 p-3 text-xs text-green-300/70 space-y-1 font-mono">
+                      <div className="text-green-300 font-semibold font-sans mb-1">AutoCAD mein kaise run karein:</div>
+                      <div>1. AutoCAD mein koi bhi drawing kholo (ya naya blank drawing)</div>
+                      <div>2. Command line mein type karo: <span className="text-green-200 font-bold">APPLOAD</span></div>
+                      <div>3. Browse karke <span className="text-green-200 font-bold">CDE_IMPORT.lsp</span> select karo → Load → Close</div>
+                      <div className="text-yellow-300/70 text-xs mt-0.5">   (ya directly CDE_IMPORT.lsp ko AutoCAD window mein drag karo)</div>
+                      <div>4. Command line mein type karo: <span className="text-green-200 font-bold">CDE_IMPORT</span> → Enter</div>
+                      <div className="text-green-400/60 mt-1">→ Folder ke saare DXF files open honge aur same name se DWG save honge</div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
