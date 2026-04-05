@@ -64,6 +64,110 @@ async function writeTextToFolder(
 
 type Tab = "extract" | "excel-to-dxf" | "fix-dxf";
 
+// ── AutoLISP tool content ─────────────────────────────────────────────────────
+
+const CDE_EXPORT_LSP = `\
+;;; ==========================================================
+;;; CAD Data Engine — CDE_Export.lsp
+;;; DWG files ko DXF format mein convert karta hai
+;;;
+;;; Kaise use karein:
+;;;   1. AutoCAD mein: Tools -> Load Application (APPLOAD)
+;;;   2. Yeh file select karein
+;;;   3. Command line mein type karein: CDE_EXPORT
+;;; ==========================================================
+
+(vl-load-com)
+
+(defun c:CDE_EXPORT (/ any-file folder files f full-path dxf-path acad-obj docs doc-obj n)
+  (setq any-file (getfiled "DWG folder select karein - koi bhi ek DWG chunein" "" "dwg" 0))
+  (if (null any-file)
+    (progn (princ "\\n[CDE] Cancelled.") (princ))
+    (progn
+      (setq folder (vl-filename-directory any-file))
+      (setq files  (vl-directory-files folder "*.dwg" 1))
+      (if (null files)
+        (progn (princ "\\n[CDE] Koi DWG file nahi mili.") (princ))
+        (progn
+          (setq acad-obj (vlax-get-acad-object))
+          (setq docs     (vla-get-Documents acad-obj))
+          (setq n 0)
+          (foreach f files
+            (setq full-path (strcat folder "\\\\" f))
+            (setq dxf-path  (strcat folder "\\\\" (vl-filename-base f)))
+            (princ (strcat "\\n  -> " f))
+            (setq doc-obj (vla-Open docs full-path :vlax-false))
+            (vla-SaveAs doc-obj dxf-path acDXF)
+            (vla-Close doc-obj :vlax-false)
+            (setq n (1+ n))
+          )
+          (princ (strcat "\\n\\n[CDE] Export complete! " (itoa n) " DXF files tayyar hain."))
+          (princ "\\n[CDE] Ab CAD Data Engine mein is folder se Extract karein.\\n")
+        )
+      )
+    )
+  )
+  (princ)
+)
+
+(princ "\\n[CDE] Export tool loaded. Command: CDE_EXPORT\\n")
+(princ)
+`;
+
+const CDE_IMPORT_LSP = `\
+;;; ==========================================================
+;;; CAD Data Engine — CDE_Import.lsp
+;;; Patched DXF files ko DWG format mein convert karta hai
+;;;
+;;; Kaise use karein:
+;;;   1. Pehle CSV upload karke Apply Changes complete karein
+;;;   2. AutoCAD mein: Tools -> Load Application (APPLOAD)
+;;;   3. Yeh file select karein
+;;;   4. Command line mein type karein: CDE_IMPORT
+;;; ==========================================================
+
+(vl-load-com)
+
+(defun c:CDE_IMPORT (/ any-file folder files f full-path dwg-path acad-obj docs doc-obj n)
+  (setq any-file (getfiled "Patched DXF folder - koi bhi ek DXF chunein" "" "dxf" 0))
+  (if (null any-file)
+    (progn (princ "\\n[CDE] Cancelled.") (princ))
+    (progn
+      (setq folder (vl-filename-directory any-file))
+      (setq files  (vl-directory-files folder "*.dxf" 1))
+      (if (null files)
+        (progn (princ "\\n[CDE] Koi DXF file nahi mili.") (princ))
+        (progn
+          (setq acad-obj (vlax-get-acad-object))
+          (setq docs     (vla-get-Documents acad-obj))
+          (setq n 0)
+          (foreach f files
+            (setq full-path (strcat folder "\\\\" f))
+            (setq dwg-path  (strcat folder "\\\\" (vl-filename-base f)))
+            (princ (strcat "\\n  -> " f " => " (vl-filename-base f) ".dwg"))
+            (setq doc-obj (vla-Open docs full-path :vlax-false))
+            (vla-SaveAs doc-obj dwg-path acNative)
+            (vla-Close doc-obj :vlax-false)
+            (setq n (1+ n))
+          )
+          (princ (strcat "\\n\\n[CDE] Import complete! " (itoa n) " DWG files update ho gayi."))
+          (princ "\\n[CDE] AutoCAD mein original DWG files ab naye data ke saath hain.\\n")
+        )
+      )
+    )
+  )
+  (princ)
+)
+
+(princ "\\n[CDE] Import tool loaded. Command: CDE_IMPORT\\n")
+(princ)
+`;
+
+async function writeLispToolsToFolder(handle: FileSystemDirectoryHandle) {
+  await writeTextToFolder(handle, "CDE_Export.lsp", CDE_EXPORT_LSP);
+  await writeTextToFolder(handle, "CDE_Import.lsp", CDE_IMPORT_LSP);
+}
+
 // ── Cover / Splash page ───────────────────────────────────────────────────────
 
 function CoverPage({ onEnter }: { onEnter: () => void }) {
@@ -288,6 +392,8 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lispStatus, setLispStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [hasDwgOnly, setHasDwgOnly] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | File[]) => {
@@ -316,12 +422,42 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
     setEntries([]);
     setResult(null);
     setSaveStatus("idle");
-    const files = await readDxfFilesFromFolder(handle);
-    if (files.length === 0) {
-      alert("Folder mein koi DXF file nahi mili.");
+    setLispStatus("idle");
+    setHasDwgOnly(false);
+
+    // Always write LISP tools to folder
+    try {
+      await writeLispToolsToFolder(handle);
+      setLispStatus("saved");
+    } catch {
+      setLispStatus("error");
+    }
+
+    const dxfFiles = await readDxfFilesFromFolder(handle);
+    if (dxfFiles.length === 0) {
+      // Check if DWG files exist
+      let dwgCount = 0;
+      for await (const entry of (handle as any).values()) {
+        if (entry.kind === "file" && entry.name.toLowerCase().endsWith(".dwg")) dwgCount++;
+      }
+      if (dwgCount > 0) setHasDwgOnly(true);
       return;
     }
-    addFiles(files);
+    addFiles(dxfFiles);
+  };
+
+  const reloadFolder = async () => {
+    if (!folderHandle) return;
+    setHasDwgOnly(false);
+    const dxfFiles = await readDxfFilesFromFolder(folderHandle);
+    if (dxfFiles.length === 0) {
+      setHasDwgOnly(true);
+      return;
+    }
+    setEntries([]);
+    setResult(null);
+    setSaveStatus("idle");
+    addFiles(dxfFiles);
   };
 
   const handleSaveToFolder = async () => {
@@ -475,17 +611,59 @@ function BulkExtractor({ folderHandle, setFolderHandle }: BulkExtractorProps) {
         )}
       </div>
 
-      {/* DWG notice */}
-      <div className="flex items-start gap-3 p-3.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
-        <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-        </svg>
-        <span>
-          <strong>DWG files:</strong> Convert to DXF first using the free{" "}
-          <strong>ODA File Converter</strong> (opendesign.com). Then use{" "}
-          <strong>Select Folder</strong> to auto-load all DXF files at once.
-        </span>
+      {/* DWG AutoLISP workflow guide */}
+      <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 overflow-hidden">
+        <div className="px-4 py-2.5 bg-indigo-500/10 border-b border-indigo-500/20 flex items-center gap-2">
+          <span className="text-sm font-semibold text-indigo-300">⚙ DWG Workflow — AutoLISP se seedha kaam karein</span>
+          {lispStatus === "saved" && folderHandle && (
+            <span className="ml-auto text-xs text-green-400 font-medium">✓ LISP tools folder mein save ho gaye</span>
+          )}
+        </div>
+        <div className="px-4 py-3 space-y-2 text-xs text-indigo-200/80">
+          <div className="grid grid-cols-1 gap-1.5">
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px]">1</span>
+              <span><strong className="text-indigo-100">Select Folder</strong> dabao — LISP tools automatic folder mein aa jayenge (<code className="bg-black/30 px-1 rounded">CDE_Export.lsp</code>, <code className="bg-black/30 px-1 rounded">CDE_Import.lsp</code>)</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px]">2</span>
+              <span><strong className="text-indigo-100">AutoCAD mein:</strong> <code className="bg-black/30 px-1 rounded">APPLOAD</code> → <code className="bg-black/30 px-1 rounded">CDE_Export.lsp</code> load karein → command: <code className="bg-black/30 px-1 rounded">CDE_EXPORT</code> — sab DWG → DXF ban jayenge</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px]">3</span>
+              <span>App mein wapas aao → <strong className="text-indigo-100">Reload Folder</strong> → DXF files load → Extract → CSV milega</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px]">4</span>
+              <span>CSV edit karo → <strong className="text-indigo-100">Excel → DXF tab</strong> mein upload → Apply Changes</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold text-[10px]">5</span>
+              <span><strong className="text-indigo-100">AutoCAD mein:</strong> <code className="bg-black/30 px-1 rounded">APPLOAD</code> → <code className="bg-black/30 px-1 rounded">CDE_Import.lsp</code> → command: <code className="bg-black/30 px-1 rounded">CDE_IMPORT</code> — DXF → DWG overwrite</span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* DWG-only folder warning + reload */}
+      {hasDwgOnly && folderHandle && (
+        <div className="flex items-center gap-3 p-3.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10">
+          <svg className="w-5 h-5 text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <div className="flex-1 text-sm">
+            <span className="text-yellow-300 font-medium">Folder mein DXF nahi mili — pehle AutoCAD mein </span>
+            <code className="bg-black/30 px-1.5 py-0.5 rounded text-yellow-200 text-xs">CDE_EXPORT</code>
+            <span className="text-yellow-300 font-medium"> run karein, phir Reload dabao</span>
+          </div>
+          <button
+            onClick={reloadFolder}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-200 hover:bg-yellow-500/30 transition-colors shrink-0"
+          >
+            ↻ Reload Folder
+          </button>
+        </div>
+      )}
 
       {/* Upload zone — only show if no folder is selected */}
       {!folderHandle && (
@@ -975,6 +1153,13 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
 
     setIsApplying(false);
     setAllDone(allSuccess);
+
+    // Auto-write CDE_Import.lsp so user can convert patched DXF → DWG immediately
+    if (allSuccess && folderHandle) {
+      try {
+        await writeTextToFolder(folderHandle, "CDE_Import.lsp", CDE_IMPORT_LSP);
+      } catch { /* non-critical */ }
+    }
   };
 
   const reset = () => {
@@ -1220,11 +1405,22 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
             )}
 
             {allDone && (
-              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300 text-sm flex items-center gap-2">
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-                All drawings updated successfully! Original DXF files in <strong>{folderName}</strong> have been replaced in-place — open them directly in your CAD application.
+              <div className="rounded-lg bg-green-500/10 border border-green-500/30 overflow-hidden">
+                <div className="p-3 text-green-300 text-sm flex items-center gap-2">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  DXF files update ho gayi — <strong>{folderName}</strong> mein in-place replace kiya.
+                </div>
+                {folderHandle && (
+                  <div className="px-3 pb-3 pt-0 border-t border-green-500/20 mt-1">
+                    <div className="text-xs text-green-400/80 font-medium mb-1">DWG files update karne ke liye:</div>
+                    <div className="text-xs text-green-300/70 space-y-0.5">
+                      <div>AutoCAD → <code className="bg-black/30 px-1 rounded">APPLOAD</code> → <code className="bg-black/30 px-1 rounded">CDE_Import.lsp</code> (folder mein already hai) → command: <code className="bg-black/30 px-1 rounded">CDE_IMPORT</code></div>
+                      <div className="text-green-500/60">Sab DXF → DWG overwrite ho jayenge — bahar se kuch bhi nahi karna</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
