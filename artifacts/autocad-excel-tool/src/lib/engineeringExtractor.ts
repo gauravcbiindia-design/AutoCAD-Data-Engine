@@ -14,13 +14,14 @@ import type { ParsedDxfData, BlockRecord, TextRecord } from "./dxfParser";
 export type Category =
   | "LINE"
   | "INSTRUMENT"
+  | "STREAM"
   | "EQUIPMENT"
   | "OPC"
   | "TEXT_REVIEW"
   | "DRAWING_META";
 
 const CATEGORY_ORDER: Record<Category, number> = {
-  LINE: 0, INSTRUMENT: 1, EQUIPMENT: 2, OPC: 3, TEXT_REVIEW: 4, DRAWING_META: 5,
+  LINE: 0, INSTRUMENT: 1, STREAM: 2, EQUIPMENT: 3, OPC: 4, TEXT_REVIEW: 5, DRAWING_META: 6,
 };
 
 // ── Row interfaces ─────────────────────────────────────────────────────────────
@@ -140,6 +141,48 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   XZSOC:"Instrument (XZSOC)", X2LOC:"Local Control (X2LOC)",
   XZLOC:"Local Control (XZLOC)", X2SOC:"Instrument (X2SOC)",
 };
+
+// ── Stream number detector ─────────────────────────────────────────────────────
+// PFD stream diamonds use LA-numbered attributes:
+//   LA000 = blank (stream description prompt)
+//   LA001 = stream number (e.g. "1102")
+// Block names: FSML001, FSM001, STREAMDIA, STRM*, etc.
+
+const LA_STREAM_TAG_RE = /^LA\d{2,3}$/i;
+const STREAM_BLOCK_RE = /^(?:FSM[LD]?\d*|STREAM|STRM|STR[-_]?DIA|DIAMOND)/i;
+
+interface StreamMatch {
+  streamNumber: string;
+  description: string;
+}
+
+function detectStream(blockName: string, attrs: { tag: string; value: string }[]): StreamMatch | null {
+  const hasLaAttrs = attrs.some((a) => LA_STREAM_TAG_RE.test(a.tag.trim()));
+  const isStreamBlock = STREAM_BLOCK_RE.test(blockName.trim());
+
+  if (!hasLaAttrs && !isStreamBlock) return null;
+
+  // Find stream number: numeric value in any LA* attr, or any purely numeric attribute
+  const STREAM_NUM_RE = /^\d{2,6}$/;
+  let streamNumber = "";
+  let description = "";
+
+  for (const a of attrs) {
+    const v = a.value.trim();
+    if (!v) continue;
+    if (STREAM_NUM_RE.test(v) && !streamNumber) {
+      streamNumber = v;
+    } else if (!description) {
+      description = v;
+    }
+  }
+
+  // Only classify as stream if we have LA* attrs OR block name matches
+  if (hasLaAttrs || isStreamBlock) {
+    return { streamNumber, description };
+  }
+  return null;
+}
 
 // ── Component / valve body type list ──────────────────────────────────────────
 // These are physical piping components (valve bodies, fittings etc.)
@@ -504,6 +547,13 @@ export function extractEngineeringData(
         IA_ATTR_TAG_RE.test(a.tag.trim()) && isInstrumentType(a.value.trim())
       );
 
+      // LA-numbered stream diamond attribute pattern (LA000, LA001 etc.)
+      // PFD stream diamonds: LA000 = blank description slot, LA001 = stream number
+      const blockHasStreamAttrs = !blockIsTitleBlock && (
+        attrs.some((a) => LA_STREAM_TAG_RE.test(a.tag.trim())) ||
+        STREAM_BLOCK_RE.test(blockName.trim())
+      );
+
       // OPC connector tag pattern: DA1001, DA1002, DB2001, etc. (2 letters + 3-6 digits)
       const OPC_TAG_RE = /^D[A-Z]\d{3,6}$/i;
 
@@ -554,6 +604,7 @@ export function extractEngineeringData(
         const valTrim = attr.value.trim();
         const isInstrAttr  = INSTRUMENT_ATTR_TAGS.has(tagUpper);
         const isIaAttr     = IA_ATTR_TAG_RE.test(tagUpper); // IA100, IA101, IA103 etc.
+        const isLaAttr     = LA_STREAM_TAG_RE.test(tagUpper); // LA000, LA001 — stream diamond attrs
         const isOpcAttr    = OPC_TAG_RE.test(tagUpper) || OPC_VALUE_RE.test(valTrim);
         const isEquipAttr  = EQUIPMENT_TAG_RE.test(tagUpper);
         // If the attribute VALUE itself is an instrument type code (e.g. FT, TV, PSV, TC)
@@ -573,6 +624,7 @@ export function extractEngineeringData(
         const isIaSlot         = isIaAttr && blockHasIaType;
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock           ? "TITLE_BLOCK"
+                           : blockHasStreamAttrs      ? "STREAM"      // PFD stream diamond (LA000/LA001, FSM* blocks)
                            : blockHasInterlockValue   ? "INTERLOCK"   // whole Z-block = INTERLOCK (blank attrs too)
                            : blockIsValve             ? "VALVES"      // blank TOP/BOTTOM/MID = valve symbol
                            : isInstrAttr && isInstrValue ? "INSTRUMENTS" // TOP=TAHH/LC/FY → INSTRUMENTS before alarm check
@@ -581,6 +633,7 @@ export function extractEngineeringData(
                            : isBlankInstrSlot         ? "INSTRUMENTS"
                            : isInstrAttr              ? "INSTRUMENTS"
                            : isIaSlot                 ? "INSTRUMENTS" // IA100/IA101/IA103 slots (incl. blank tag fields)
+                           : isLaAttr                 ? "STREAM"      // LA000/LA001 outside an FSM block (safety net)
                            : isOpcAttr                ? "OPC"
                            : isEquipAttr              ? "EQUIPMENT"
                            : isInstrNum               ? "INSTRUMENTS"
@@ -680,6 +733,20 @@ export function extractEngineeringData(
       row.Visible_Text = visibleText;
       row.Source_Block = blockName;
       row.Source_Field = opcMatch.connTag;
+      row.Status = statusVal;
+      engineerRows.push(row);
+      continue;
+    }
+
+    // ── Stream? (PFD stream diamond — LA000/LA001 attrs, FSM* blocks) ──────
+    const streamMatch = detectStream(blockName, attrs);
+    if (streamMatch) {
+      const row = emptyRow(dwgName, handle, "STREAM");
+      row.Line_Number = streamMatch.streamNumber;   // stream number as primary ID
+      row.Description = streamMatch.description;
+      row.Visible_Text = visibleText;
+      row.Source_Block = blockName;
+      row.Source_Field = "STREAM";
       row.Status = statusVal;
       engineerRows.push(row);
       continue;
