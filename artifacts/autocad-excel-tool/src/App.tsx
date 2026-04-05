@@ -13,7 +13,7 @@ import {
 import { exportRawCsv, buildRawCsvString } from "@/lib/excelExport";
 import {
   parseRawExport, parseRawExportCsv, patchDxfContent,
-  readDxfFromFolder, writeUpdatedDxf, dxfHasOleObjects,
+  readDxfFromFolder, writeUpdatedDxf, dxfHasOleObjects, removeOleFromDxf,
   type ParsedExcelResult,
 } from "@/lib/excelToDxf";
 
@@ -62,7 +62,7 @@ async function writeTextToFolder(
   await writable.close();
 }
 
-type Tab = "extract" | "excel-to-dxf";
+type Tab = "extract" | "excel-to-dxf" | "fix-dxf";
 
 // ── Cover / Splash page ───────────────────────────────────────────────────────
 
@@ -222,6 +222,7 @@ function App() {
             {[
               { id: "extract" as Tab, label: "Bulk DXF → Excel", icon: "⬇️" },
               { id: "excel-to-dxf" as Tab, label: "Excel → DXF", icon: "⬆️" },
+              { id: "fix-dxf" as Tab, label: "Fix DXF (OLE)", icon: "🔧" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -253,7 +254,9 @@ function App() {
       <main className="max-w-6xl mx-auto px-6 py-8">
         {activeTab === "extract"
           ? <BulkExtractor folderHandle={folderHandle} setFolderHandle={setFolderHandle} />
-          : <ExcelToDxf folderHandle={folderHandle} setFolderHandle={setFolderHandle} />}
+          : activeTab === "excel-to-dxf"
+          ? <ExcelToDxf folderHandle={folderHandle} setFolderHandle={setFolderHandle} />
+          : <OleRemover />}
       </main>
 
       <footer className="border-t border-border mt-12 py-5 px-6">
@@ -1253,6 +1256,174 @@ function ExcelToDxf({ folderHandle, setFolderHandle }: ExcelToDxfProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── OLE Remover ──────────────────────────────────────────────────────────────
+
+interface OleFileEntry {
+  file: File;
+  status: "pending" | "processing" | "done" | "error";
+  removed?: number;
+  error?: string;
+}
+
+function OleRemover() {
+  const [entries, setEntries] = useState<OleFileEntry[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = (files: FileList | File[]) => {
+    const newFiles = Array.from(files).filter((f) =>
+      f.name.toLowerCase().endsWith(".dxf") &&
+      !entries.some((e) => e.file.name === f.name)
+    );
+    if (!newFiles.length) return;
+    setEntries((prev) => [
+      ...prev,
+      ...newFiles.map((f) => ({ file: f, status: "pending" as const })),
+    ]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const handleProcess = async () => {
+    setIsProcessing(true);
+    const pending = entries.filter((e) => e.status === "pending");
+
+    for (const entry of pending) {
+      setEntries((prev) =>
+        prev.map((e) => e.file.name === entry.file.name ? { ...e, status: "processing" } : e)
+      );
+      try {
+        const text = await entry.file.text();
+        const { cleaned, removed } = removeOleFromDxf(text);
+        const blob = new Blob([cleaned], { type: "application/dxf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = entry.file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.file.name === entry.file.name ? { ...e, status: "done", removed } : e
+          )
+        );
+      } catch (err: any) {
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.file.name === entry.file.name ? { ...e, status: "error", error: err.message } : e
+          )
+        );
+      }
+    }
+    setIsProcessing(false);
+  };
+
+  const reset = () => { setEntries([]); };
+  const pendingCount = entries.filter((e) => e.status === "pending").length;
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Info banner */}
+      <div className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/10 text-sm text-orange-300 space-y-1">
+        <div className="font-semibold text-orange-200">🔧 OLE Object Remover</div>
+        <div>Agar aapki DXF files AutoCAD mein hang kar rahi hain ya Excel khul rahi hai, toh OLE objects embedded hain. Yeh tool unhe hata ke clean DXF download deta hai.</div>
+        <div className="text-orange-400/80 text-xs">Clean file aapke Downloads folder mein aayegi — usi naam se. Phir AutoCAD mein normally kholein.</div>
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
+          isDragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-muted/20"
+        }`}
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".dxf"
+          multiple
+          className="hidden"
+          onChange={(e) => e.target.files && addFiles(e.target.files)}
+        />
+        <div className="text-4xl mb-3">📂</div>
+        <div className="text-sm font-medium text-foreground">Affected DXF files yahan drop karein</div>
+        <div className="text-xs text-muted-foreground mt-1">ya click karke select karein — multiple files ek saath</div>
+      </div>
+
+      {/* File list */}
+      {entries.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Files ({entries.length})
+          </div>
+          <div className="divide-y divide-border">
+            {entries.map((entry) => (
+              <div key={entry.file.name} className="flex items-center gap-3 px-3 py-2.5">
+                {entry.status === "pending" && <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />}
+                {entry.status === "processing" && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />}
+                {entry.status === "done" && (
+                  <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {entry.status === "error" && (
+                  <svg className="w-4 h-4 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium font-mono truncate">{entry.file.name}</div>
+                  {entry.status === "done" && (
+                    <div className="text-xs text-green-400">
+                      {entry.removed} OLE object{entry.removed !== 1 ? "s" : ""} hataaye — downloaded
+                    </div>
+                  )}
+                  {entry.status === "error" && (
+                    <div className="text-xs text-destructive">{entry.error}</div>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground shrink-0">
+                  {(entry.file.size / 1024).toFixed(0)} KB
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {entries.length > 0 && (
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={reset}
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted/30 transition-colors disabled:opacity-50"
+          >
+            Reset
+          </button>
+          <button
+            onClick={handleProcess}
+            disabled={isProcessing || pendingCount === 0}
+            className="px-6 py-2 text-sm font-semibold rounded-lg bg-orange-500 hover:bg-orange-400 text-white disabled:opacity-50 transition-colors"
+          >
+            {isProcessing
+              ? "Processing…"
+              : `OLE Hatao & Download (${pendingCount} file${pendingCount !== 1 ? "s" : ""})`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

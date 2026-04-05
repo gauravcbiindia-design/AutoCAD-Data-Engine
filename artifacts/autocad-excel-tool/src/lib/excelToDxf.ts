@@ -213,6 +213,60 @@ export function dxfHasOleObjects(dxfText: string): boolean {
   return /^\s*(OLE2FRAME|OLEFRAME)\s*$/im.test(dxfText);
 }
 
+/**
+ * Removes all OLE2FRAME and OLEFRAME entities from a DXF text string.
+ * Returns the cleaned DXF and a count of OLE entities removed.
+ *
+ * Algorithm:
+ *  - Scans group-code pairs
+ *  - When entity type (code 0) is OLE2FRAME or OLEFRAME, skips all lines
+ *    until the next entity marker (code 0) is found
+ */
+export function removeOleFromDxf(
+  originalDxf: string
+): { cleaned: string; removed: number } {
+  const eol = originalDxf.includes("\r\n") ? "\r\n" : "\n";
+  const lines = originalDxf.split(/\r?\n/);
+
+  const out: string[] = [];
+  let removed = 0;
+  let skipUntilNextEntity = false;
+  let i = 0;
+
+  while (i < lines.length) {
+    const codeLine = lines[i];
+    const valueLine = i + 1 < lines.length ? lines[i + 1] : "";
+    const codeNum = parseInt(codeLine.trim(), 10);
+
+    if (isNaN(codeNum)) {
+      if (!skipUntilNextEntity) out.push(codeLine);
+      i++;
+      continue;
+    }
+
+    if (codeNum === 0) {
+      const entityType = valueLine.trim().toUpperCase();
+      if (entityType === "OLE2FRAME" || entityType === "OLEFRAME") {
+        // Start skipping this entity
+        skipUntilNextEntity = true;
+        removed++;
+        i += 2;
+        continue;
+      } else {
+        // New entity — stop skipping
+        skipUntilNextEntity = false;
+      }
+    }
+
+    if (!skipUntilNextEntity) {
+      out.push(codeLine, valueLine);
+    }
+    i += 2;
+  }
+
+  return { cleaned: out.join(eol), removed };
+}
+
 export function patchDxfContent(
   originalDxf: string,
   patches: DwgPatchMap
