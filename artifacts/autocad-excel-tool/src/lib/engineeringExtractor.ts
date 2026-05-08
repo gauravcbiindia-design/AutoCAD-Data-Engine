@@ -549,6 +549,10 @@ export function extractEngineeringData(
         "SUBFIX", "SUFFIX",
       ]);
 
+      // If this is a Title Block / border / revision table → mark everything as TITLE_BLOCK
+      // MUST be declared before any variable that references blockIsTitleBlock
+      const blockIsTitleBlock = isTitleBlock(blockName);
+
       // IA-numbered instrument attribute pattern (IA100, IA101, IA103 etc.)
       // Used in FSMB001-type instrument blocks:
       //   IA100 = function code (PC, FC, FFC...)
@@ -577,9 +581,6 @@ export function extractEngineeringData(
 
       // Equipment tag pattern: EQLINE1, EQNAME1, EQNAME2, EQNAME3, EQNO, EQTAG etc.
       const EQUIPMENT_TAG_RE = /^EQ/i;
-
-      // If this is a Title Block / border / revision table → mark everything as TITLE_BLOCK
-      const blockIsTitleBlock = isTitleBlock(blockName);
 
       // Pre-compute full instrument tag for this block (e.g. "TT-2411")
       // so every attribute row can reference which instrument it belongs to
