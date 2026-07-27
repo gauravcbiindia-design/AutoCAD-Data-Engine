@@ -1,8 +1,19 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "a29KykcMwWsUntkTHF3jV"
 uri = "file://artifacts/cad-data-engine-deck/public/hero.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "8Y4cVYC5c104Cma8nOTdj"
+uri = "file://.local/outputs/CAD-Data-Engine---Presentation.pptx"
+type = "slides"
+title = "CAD Data Engine — Presentation.pptx"
+
+[[outputs]]
+id = "91zx2Ic88GtaRe_iLCZQa"
+uri = "file://.local/outputs/CAD-Data-Engine---Presentation.pdf"
+type = "pdf"
+title = "CAD Data Engine — Presentation.pdf"
