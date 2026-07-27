@@ -262,6 +262,26 @@ function App() {
       <footer className="border-t border-border mt-12 py-5 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} <strong className="text-foreground">G. Bharti</strong> — All rights reserved.</span>
+
+          {/* IT Security Doc link */}
+          <a
+            href="/it-audit-data-flow.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors hover:text-foreground"
+            style={{
+              border: "1px solid rgba(0,180,255,0.3)",
+              background: "rgba(0,180,255,0.06)",
+              color: "#7de8ff",
+            }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            IT Security Doc
+          </a>
+
           <span className="flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
