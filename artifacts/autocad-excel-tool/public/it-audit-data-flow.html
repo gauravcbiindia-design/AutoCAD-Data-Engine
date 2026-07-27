@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAD Data Engine — Technical Data Flow & Security Assessment</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 11pt;
+      color: #1a1a2e;
+      background: #fff;
+      line-height: 1.6;
+    }
+
+    /* ── Page layout ── */
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 50px;
+    }
+
+    /* ── Header ── */
+    .doc-header {
+      border-bottom: 3px solid #1a3a6b;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+    .doc-header .logo-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .doc-header .product-name {
+      font-size: 20pt;
+      font-weight: 700;
+      color: #1a3a6b;
+      letter-spacing: -0.5px;
+    }
+    .doc-header .doc-badge {
+      background: #1a3a6b;
+      color: #fff;
+      font-size: 8pt;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 3px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .doc-header .doc-title {
+      font-size: 14pt;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 6px;
+    }
+    .doc-header .meta-row {
+      display: flex;
+      gap: 30px;
+      font-size: 9pt;
+      color: #666;
+    }
+    .doc-header .meta-row span strong { color: #444; }
+
+    /* ── Section headings ── */
+    h2 {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #1a3a6b;
+      border-left: 4px solid #1a3a6b;
+      padding-left: 10px;
+      margin: 28px 0 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    h3 {
+      font-size: 10.5pt;
+      font-weight: 600;
+      color: #2c3e50;
+      margin: 16px 0 6px;
+    }
+
+    p { margin-bottom: 8px; }
+
+    /* ── Info box ── */
+    .info-box {
+      background: #f0f4fa;
+      border: 1px solid #b8cce4;
+      border-left: 4px solid #1a3a6b;
+      border-radius: 4px;
+      padding: 14px 18px;
+      margin: 14px 0;
+      font-size: 10.5pt;
+    }
+    .info-box.green {
+      background: #f0faf4;
+      border-color: #a8d8b9;
+      border-left-color: #1a7a3a;
+    }
+    .info-box.amber {
+      background: #fffbf0;
+      border-color: #f0d080;
+      border-left-color: #c07a00;
+    }
+
+    /* ── Data flow diagram ── */
+    .flow-diagram {
+      margin: 20px 0;
+      padding: 24px;
+      background: #f8fafc;
+      border: 1px solid #d0dcea;
+      border-radius: 6px;
+    }
+    .flow-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+    }
+    .flow-box {
+      background: #fff;
+      border: 2px solid #1a3a6b;
+      border-radius: 6px;
+      padding: 12px 18px;
+      text-align: center;
+      min-width: 130px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #1a3a6b;
+      position: relative;
+    }
+    .flow-box .sub {
+      font-size: 8pt;
+      font-weight: 400;
+      color: #666;
+      margin-top: 3px;
+    }
+    .flow-box.highlight {
+      background: #1a3a6b;
+      color: #fff;
+      border-color: #1a3a6b;
+    }
+    .flow-box.highlight .sub { color: #a8c4e8; }
+    .flow-box.green-box {
+      background: #e8f8ee;
+      border-color: #1a7a3a;
+      color: #1a5a28;
+    }
+    .flow-box.red-box {
+      background: #fdecea;
+      border-color: #c0392b;
+      color: #7a1a12;
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+    .flow-arrow {
+      font-size: 20pt;
+      color: #1a3a6b;
+      padding: 0 8px;
+      line-height: 1;
+    }
+    .flow-arrow.red { color: #c0392b; }
+    .flow-label {
+      font-size: 8pt;
+      color: #888;
+      text-align: center;
+      margin-top: 16px;
+    }
+    .no-server-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed #ccc;
+      font-size: 9pt;
+      color: #888;
+    }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 10pt;
+    }
+    th {
+      background: #1a3a6b;
+      color: #fff;
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 9.5pt;
+      font-weight: 600;
+    }
+    td {
+      padding: 7px 12px;
+      border-bottom: 1px solid #e0e8f0;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #f5f8fc; }
+    .tick { color: #1a7a3a; font-weight: 700; }
+    .cross { color: #c0392b; font-weight: 700; }
+
+    /* ── Bullet list ── */
+    ul, ol {
+      margin: 8px 0 10px 22px;
+    }
+    li { margin-bottom: 4px; }
+
+    /* ── Signature block ── */
+    .signature-section {
+      margin-top: 36px;
+      padding-top: 20px;
+      border-top: 2px solid #1a3a6b;
+    }
+    .sig-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 16px;
+    }
+    .sig-box {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 14px 16px;
+    }
+    .sig-box .sig-label {
+      font-size: 8.5pt;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .sig-box .sig-value {
+      font-size: 10.5pt;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    .sig-box .sig-line {
+      border-top: 1px solid #aaa;
+      margin-top: 28px;
+      padding-top: 4px;
+      font-size: 8.5pt;
+      color: #888;
+    }
+
+    /* ── Footer ── */
+    .doc-footer {
+      margin-top: 36px;
+      padding-top: 14px;
+      border-top: 1px solid #ccc;
+      font-size: 8.5pt;
+      color: #888;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Print ── */
+    @media print {
+      body { font-size: 10pt; }
+      .page { padding: 20px 30px; max-width: none; }
+      h2 { page-break-after: avoid; }
+      .flow-diagram, table, .sig-box { break-inside: avoid; }
+      .print-btn { display: none !important; }
+    }
+
+    /* ── Print button (screen only) ── */
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      background: #1a3a6b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 10.5pt;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      z-index: 999;
+    }
+    .print-btn:hover { background: #0f2548; }
+  </style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+
+<div class="page">
+
+  <!-- ── Document Header ── -->
+  <div class="doc-header">
+    <div class="logo-row">
+      <div class="product-name">CAD Data Engine</div>
+      <div class="doc-badge">IT Security — Confidential</div>
+    </div>
+    <div class="doc-title">Technical Data Flow &amp; Security Assessment Document</div>
+    <div class="meta-row">
+      <span><strong>Document Ref:</strong> CDE-SEC-001</span>
+      <span><strong>Version:</strong> 1.0</span>
+      <span><strong>Date:</strong> July 27, 2026</span>
+      <span><strong>Classification:</strong> Internal / IT Audit</span>
+    </div>
+  </div>
+
+  <!-- ── 1. Executive Summary ── -->
+  <h2>1. Executive Summary</h2>
+  <p>
+    This document provides a technical assessment of the <strong>CAD Data Engine</strong> tool
+    for IT security audit and approval purposes. The tool is a browser-based web application
+    used by engineering teams to extract, review, and export structured data from AutoCAD
+    Drawing Exchange Format (DXF) files and apply CSV-based edits back to those files.
+  </p>
+  <div class="info-box green">
+    <strong>Key Security Finding:</strong> The CAD Data Engine processes all files entirely
+    within the user's local web browser. No engineering data, drawings, or exported files
+    are transmitted to any external server, cloud service, or third party at any point.
+    The tool is architecturally equivalent to running a local desktop application.
+  </div>
+
+  <!-- ── 2. Tool Overview ── -->
+  <h2>2. Tool Overview &amp; Purpose</h2>
+  <table>
+    <tr><th>Attribute</th><th>Details</th></tr>
+    <tr><td><strong>Product Name</strong></td><td>CAD Data Engine</td></tr>
+    <tr><td><strong>Version</strong></td><td>1.0 (2026)</td></tr>
+    <tr><td><strong>Owner / Copyright</strong></td><td>© 2026 G. Bharti. All Rights Reserved.</td></tr>
+    <tr><td><strong>Application Type</strong></td><td>Browser-based Single Page Application (SPA)</td></tr>
+    <tr><td><strong>Primary Purpose</strong></td><td>
+      Extract engineering tag data (instruments, line numbers, equipment, streams, OPC connectors)
+      from AutoCAD P&amp;ID/PFD DXF files; export to CSV; apply CSV edits back to DXF/DWG
+    </td></tr>
+    <tr><td><strong>Intended Users</strong></td><td>Engineering / CAD teams</td></tr>
+    <tr><td><strong>Supported File Formats</strong></td><td>Input: .DXF, .CSV — Output: .DXF (patched), .CSV, .LSP</td></tr>
+    <tr><td><strong>Network Requirement</strong></td><td>Required only to load the application page initially; zero network access during file processing</td></tr>
+  </table>
+
+  <!-- ── 3. Data Flow Diagram ── -->
+  <h2>3. Data Flow Architecture</h2>
+  <p>The diagram below illustrates the complete data flow during tool operation:</p>
+
+  <div class="flow-diagram">
+    <!-- Main flow -->
+    <div class="flow-row">
+      <div class="flow-box">
+        📁 User's Files
+        <div class="sub">DXF / CSV<br>on local disk</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">
+        📂 File Selection
+        <div class="sub">Browser File Picker<br>(no upload)</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box highlight">
+        🌐 Browser Memory
+        <div class="sub">All parsing &amp; processing<br>happens here (RAM only)</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box green-box">
+        ✅ Output Files
+        <div class="sub">DXF / CSV / LSP<br>saved to local disk</div>
+      </div>
+    </div>
+
+    <!-- No server row -->
+    <div class="no-server-row">
+      <div class="flow-box red-box" style="min-width:110px; font-size:8.5pt;">
+        ❌ External Server
+        <div class="sub">Not involved</div>
+      </div>
+      <div class="flow-box red-box" style="min-width:110px; font-size:8.5pt;">
+        ❌ Cloud Storage
+        <div class="sub">Not involved</div>
+      </div>
+      <div class="flow-box red-box" style="min-width:110px; font-size:8.5pt;">
+        ❌ Third-Party API
+        <div class="sub">Not involved</div>
+      </div>
+    </div>
+    <div class="flow-label">
+      Files are accessed via the browser's standard File System Access API — they are read into
+      browser memory (RAM) and processed entirely on the local device. Output is written back to
+      the local filesystem. No data traverses the network.
+    </div>
+  </div>
+
+  <!-- ── 4. Data Residency ── -->
+  <h2>4. Data Residency &amp; Transmission Confirmation</h2>
+
+  <div class="info-box green">
+    <strong>Confirmed: Zero Data Transmitted to External Systems.</strong><br>
+    Engineering drawings (DXF files), extracted tag data, CSV exports, and all intermediate
+    processing results remain exclusively within the user's browser session on their local device.
+    When the browser tab is closed, all in-memory data is discarded. No copies are retained
+    by the application, its hosting provider, or any third party.
+  </div>
+
+  <h3>What the Application Does Access (Network)</h3>
+  <table>
+    <tr><th>Network Request</th><th>What Is Sent</th><th>Purpose</th><th>Contains Engineering Data?</th></tr>
+    <tr>
+      <td>Initial page load</td>
+      <td>HTTP GET for HTML/JS/CSS files only</td>
+      <td>Load the application interface</td>
+      <td><span class="cross">✗ No</span></td>
+    </tr>
+    <tr>
+      <td>File processing</td>
+      <td><em>No network request made</em></td>
+      <td>Runs entirely in browser RAM</td>
+      <td><span class="cross">✗ No</span></td>
+    </tr>
+    <tr>
+      <td>CSV export</td>
+      <td><em>No network request made</em></td>
+      <td>Browser generates file locally (Blob API)</td>
+      <td><span class="cross">✗ No</span></td>
+    </tr>
+    <tr>
+      <td>DXF write-back</td>
+      <td><em>No network request made</em></td>
+      <td>Browser writes directly to local filesystem</td>
+      <td><span class="cross">✗ No</span></td>
+    </tr>
+  </table>
+
+  <!-- ── 5. Technical Architecture ── -->
+  <h2>5. Technical Architecture &amp; Technology Stack</h2>
+
+  <table>
+    <tr><th>Component</th><th>Technology</th><th>Where It Runs</th><th>Role</th></tr>
+    <tr>
+      <td>User Interface</td>
+      <td>React 18 (TypeScript)</td>
+      <td>Browser (client-side)</td>
+      <td>Renders the application interface</td>
+    </tr>
+    <tr>
+      <td>DXF Parser</td>
+      <td>Custom TypeScript module + dxf-parser library</td>
+      <td>Browser Web Worker (client-side)</td>
+      <td>Reads and parses DXF group codes; extracts block attributes</td>
+    </tr>
+    <tr>
+      <td>Engineering Extractor</td>
+      <td>Custom TypeScript module</td>
+      <td>Browser Web Worker (client-side)</td>
+      <td>Classifies entities as LINE / INSTRUMENT / STREAM / EQUIPMENT / OPC</td>
+    </tr>
+    <tr>
+      <td>CSV Export Engine</td>
+      <td>Custom TypeScript module</td>
+      <td>Browser (client-side)</td>
+      <td>Generates CSV using browser Blob API; triggers local file download</td>
+    </tr>
+    <tr>
+      <td>DXF Write-Back</td>
+      <td>Custom TypeScript module</td>
+      <td>Browser (client-side)</td>
+      <td>Patches DXF attribute values; writes file to local disk via File System Access API</td>
+    </tr>
+    <tr>
+      <td>Application Hosting</td>
+      <td>Static HTML/JS/CSS files</td>
+      <td>Web server (delivers code only)</td>
+      <td>Serves the application files on first load; no data processing role</td>
+    </tr>
+  </table>
+
+  <div class="info-box">
+    <strong>Web Worker Isolation:</strong> Heavy processing (DXF parsing, entity classification)
+    runs in a browser Web Worker — a sandboxed background thread that has no access to the
+    network, cookies, or local storage. This further ensures that engineering data cannot
+    leave the device even through indirect channels.
+  </div>
+
+  <!-- ── 6. Security Controls ── -->
+  <h2>6. Security Controls &amp; Posture</h2>
+
+  <table>
+    <tr><th>Security Control</th><th>Status</th><th>Details</th></tr>
+    <tr>
+      <td>Data transmission to external servers</td>
+      <td><span class="tick">✓ None</span></td>
+      <td>No API calls to external services during file processing</td>
+    </tr>
+    <tr>
+      <td>Data persistence / storage</td>
+      <td><span class="tick">✓ None</span></td>
+      <td>Application uses no cookies, localStorage, sessionStorage, or IndexedDB for engineering data</td>
+    </tr>
+    <tr>
+      <td>Third-party data sharing</td>
+      <td><span class="tick">✓ None</span></td>
+      <td>No analytics, telemetry, or tracking services integrated</td>
+    </tr>
+    <tr>
+      <td>Authentication requirement</td>
+      <td>Optional (access control)</td>
+      <td>Can be restricted to company network / VPN by IT team; application itself has no login</td>
+    </tr>
+    <tr>
+      <td>Server-side data processing</td>
+      <td><span class="tick">✓ None</span></td>
+      <td>All computation is client-side; server only delivers static files</td>
+    </tr>
+    <tr>
+      <td>File System Access</td>
+      <td>Explicit user permission</td>
+      <td>Browser requires explicit user action (file picker / folder selection) — no background access</td>
+    </tr>
+    <tr>
+      <td>Network requests during processing</td>
+      <td><span class="tick">✓ Zero</span></td>
+      <td>Confirmed via Web Worker scope — Workers cannot make arbitrary network calls in this implementation</td>
+    </tr>
+    <tr>
+      <td>Open-source dependencies</td>
+      <td>Reviewed</td>
+      <td>dxf-parser (MIT), React (MIT), Vite (MIT) — standard, widely audited libraries</td>
+    </tr>
+  </table>
+
+  <!-- ── 7. Deployment Options ── -->
+  <h2>7. Deployment Options for Company Portal</h2>
+
+  <h3>Option A — Hosted via URL Link (Recommended — Simplest)</h3>
+  <p>
+    The tool is accessible at a published URL. Employees access it through their browser.
+    No installation required. Suitable for teams with internet access.
+  </p>
+  <ul>
+    <li>IT action required: Whitelist the application URL in corporate proxy/firewall</li>
+    <li>Data risk: None — no engineering data leaves the user's device</li>
+  </ul>
+
+  <h3>Option B — Intranet / Self-Hosted (Recommended for Strict Data Policies)</h3>
+  <p>
+    The application can be exported as a static build (HTML/CSS/JS bundle) and hosted on
+    an internal web server (IIS, Nginx, Apache) within the company network.
+    No internet connection is required once deployed.
+  </p>
+  <ul>
+    <li>IT action required: Copy static files to internal web server; configure MIME types for .js/.css</li>
+    <li>Data risk: None — processing remains local; internal server only delivers code</li>
+    <li>Benefit: Fully air-gapped operation; no outbound internet required</li>
+  </ul>
+
+  <h3>Option C — SharePoint / Intranet Portal Embed</h3>
+  <p>
+    The hosted URL can be embedded as an <code>&lt;iframe&gt;</code> in SharePoint or any
+    company intranet portal page.
+  </p>
+
+  <div class="info-box amber">
+    <strong>IT Recommendation:</strong> For the strictest data governance, use Option B
+    (self-hosted). The static build is a portable folder of files with no dependencies on
+    external services. Once deployed internally, the tool operates with zero outbound network
+    traffic of any kind.
+  </div>
+
+  <!-- ── 8. Applicable Standards ── -->
+  <h2>8. Regulatory &amp; Policy Alignment</h2>
+  <table>
+    <tr><th>Policy / Standard</th><th>Applicability</th><th>Notes</th></tr>
+    <tr>
+      <td>Data Protection (GDPR / PDPA)</td>
+      <td><span class="tick">✓ Compliant by design</span></td>
+      <td>No personal data or engineering data is collected or stored</td>
+    </tr>
+    <tr>
+      <td>Intellectual Property (Drawing security)</td>
+      <td><span class="tick">✓ Protected</span></td>
+      <td>DXF files never leave the user's device; no server copy made</td>
+    </tr>
+    <tr>
+      <td>IT Acceptable Use Policy</td>
+      <td>Subject to IT review</td>
+      <td>Equivalent to using Microsoft Excel locally; no elevated risk profile</td>
+    </tr>
+    <tr>
+      <td>Export Control (ITAR / EAR)</td>
+      <td><span class="tick">✓ No transmission</span></td>
+      <td>No technical data is transmitted cross-border or to foreign servers</td>
+    </tr>
+  </table>
+
+  <!-- ── 9. Ownership ── -->
+  <h2>9. Intellectual Property &amp; Ownership</h2>
+  <div class="info-box">
+    <strong>© 2026 G. Bharti. All Rights Reserved.</strong><br><br>
+    The CAD Data Engine software, including all source code, algorithms, data extraction logic,
+    and user interface components, is the exclusive intellectual property of G. Bharti.
+    The software is proprietary. Unauthorised copying, modification, distribution, or use
+    is strictly prohibited.<br><br>
+    The company deploying this tool retains full ownership of all engineering data
+    (DXF files, extracted data, CSV exports) produced during use. The tool does not
+    claim any rights over data processed through it.
+  </div>
+
+  <!-- ── 10. Contact ── -->
+  <h2>10. Contact &amp; Queries</h2>
+  <p>
+    For technical queries related to this security assessment, data flow architecture,
+    or deployment assistance, contact the tool owner:
+  </p>
+  <table style="width:auto;">
+    <tr><td style="padding:5px 16px 5px 0;"><strong>Name</strong></td><td>G. Bharti</td></tr>
+    <tr><td style="padding:5px 16px 5px 0;"><strong>Role</strong></td><td>Software Owner — CAD Data Engine</td></tr>
+    <tr><td style="padding:5px 16px 5px 0;"><strong>Document</strong></td><td>CDE-SEC-001 v1.0</td></tr>
+  </table>
+
+  <!-- ── Signature Block ── -->
+  <div class="signature-section">
+    <h2 style="margin-top:0;">Document Approval &amp; Sign-Off</h2>
+    <div class="sig-grid">
+      <div class="sig-box">
+        <div class="sig-label">Prepared By</div>
+        <div class="sig-value">G. Bharti</div>
+        <div class="sig-line">Signature &amp; Date: ______________________</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-label">Reviewed By (IT Security)</div>
+        <div class="sig-value">&nbsp;</div>
+        <div class="sig-line">Signature &amp; Date: ______________________</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-label">Approved By (IT Manager)</div>
+        <div class="sig-value">&nbsp;</div>
+        <div class="sig-line">Signature &amp; Date: ______________________</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-label">Approval Reference No.</div>
+        <div class="sig-value">&nbsp;</div>
+        <div class="sig-line">Reference: ______________________</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Footer ── -->
+  <div class="doc-footer">
+    <span>CAD Data Engine — CDE-SEC-001 v1.0 — July 2026</span>
+    <span>© 2026 G. Bharti. All Rights Reserved. Proprietary &amp; Confidential.</span>
+  </div>
+
+</div>
+</body>
+</html>

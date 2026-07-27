@@ -17,3 +17,9 @@ id = "91zx2Ic88GtaRe_iLCZQa"
 uri = "file://.local/outputs/CAD-Data-Engine---Presentation.pdf"
 type = "pdf"
 title = "CAD Data Engine — Presentation.pdf"
+
+[[outputs]]
+id = "aMnVPNsKG4dfex5oOIcqw"
+uri = "file://artifacts/autocad-excel-tool/public/it-audit-data-flow.html"
+type = "unspecified"
+title = "IT Audit — Technical Data Flow Document"
