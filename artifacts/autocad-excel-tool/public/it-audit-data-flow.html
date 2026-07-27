@@ -285,11 +285,136 @@
       z-index: 999;
     }
     .print-btn:hover { background: #0f2548; }
+
+    /* ── Customisation panel (screen only) ── */
+    .config-panel {
+      background: #f4f7fc;
+      border-bottom: 2px solid #1a3a6b;
+      padding: 16px 0 14px;
+    }
+    .config-panel .config-inner {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 50px;
+    }
+    .config-panel .config-title {
+      font-size: 9pt;
+      font-weight: 700;
+      color: #1a3a6b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .config-panel .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 20px;
+    }
+    .config-panel .config-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .config-panel .config-field label {
+      font-size: 8pt;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .config-panel .config-field input {
+      font-size: 10pt;
+      color: #1a1a2e;
+      border: 1px solid #c8d8ec;
+      border-radius: 4px;
+      padding: 6px 10px;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .config-panel .config-field input:focus {
+      border-color: #1a3a6b;
+      box-shadow: 0 0 0 2px rgba(26,58,107,0.12);
+    }
+    .config-panel .config-field input::placeholder {
+      color: #aab;
+    }
+    .config-panel .config-hint {
+      font-size: 8pt;
+      color: #888;
+      margin-top: 8px;
+    }
+
+    /* ── Company logo in header ── */
+    .company-logo-wrap {
+      display: none;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .company-logo-wrap img {
+      max-height: 48px;
+      max-width: 160px;
+      object-fit: contain;
+    }
+    .company-logo-wrap.has-logo {
+      display: flex;
+    }
+
+    /* ── Submitted-to box ── */
+    .submitted-to-box {
+      display: none;
+      background: #f0f4fa;
+      border: 1px solid #b8cce4;
+      border-left: 4px solid #1a3a6b;
+      border-radius: 4px;
+      padding: 10px 18px;
+      margin: 12px 0 0;
+      font-size: 9.5pt;
+    }
+    .submitted-to-box.visible { display: block; }
+
+    @media print {
+      .config-panel { display: none !important; }
+    }
   </style>
 </head>
 <body>
 
 <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+
+<!-- ── Company Customisation Panel (hidden on print) ── -->
+<div class="config-panel">
+  <div class="config-inner">
+    <div class="config-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
+      </svg>
+      Customise for your company — fill in below (hidden when printing)
+    </div>
+    <div class="config-grid">
+      <div class="config-field">
+        <label for="cfg-company">Company / Organisation Name</label>
+        <input id="cfg-company" type="text" placeholder="e.g. Acme Engineering Ltd" oninput="applyConfig()" />
+      </div>
+      <div class="config-field">
+        <label for="cfg-logo">Company Logo URL <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+        <input id="cfg-logo" type="url" placeholder="https://example.com/logo.png" oninput="applyConfig()" />
+      </div>
+      <div class="config-field">
+        <label for="cfg-dept">IT Department Name</label>
+        <input id="cfg-dept" type="text" placeholder="e.g. Information Technology &amp; Cyber Security" oninput="applyConfig()" />
+      </div>
+      <div class="config-field">
+        <label for="cfg-contact">IT Contact / Reviewer Name</label>
+        <input id="cfg-contact" type="text" placeholder="e.g. John Smith" oninput="applyConfig()" />
+      </div>
+    </div>
+    <div class="config-hint">💡 These fields update the document header and approval block instantly. They are never sent anywhere — everything stays in your browser.</div>
+  </div>
+</div>
 
 <div class="page">
 
@@ -297,6 +422,10 @@
   <div class="doc-header">
     <div class="logo-row">
       <div class="product-name">CAD Data Engine</div>
+      <!-- Company logo — shown when a URL is entered in the config panel -->
+      <div class="company-logo-wrap" id="company-logo-wrap">
+        <img id="company-logo-img" src="" alt="Company Logo" />
+      </div>
       <div class="doc-badge">IT Security — Confidential</div>
     </div>
     <div class="doc-title">Technical Data Flow &amp; Security Assessment Document</div>
@@ -305,6 +434,11 @@
       <span><strong>Version:</strong> 1.0</span>
       <span><strong>Date:</strong> July 27, 2026</span>
       <span><strong>Classification:</strong> Internal / IT Audit</span>
+    </div>
+    <!-- Submitted-to box — shown when company/dept is filled in -->
+    <div class="submitted-to-box" id="submitted-to-box">
+      <strong>Submitted to:</strong>
+      <span id="submitted-to-text"></span>
     </div>
   </div>
 
@@ -627,11 +761,11 @@
       </div>
       <div class="sig-box">
         <div class="sig-label">Reviewed By (IT Security)</div>
-        <div class="sig-value">&nbsp;</div>
+        <div class="sig-value" id="sig-it-contact">&nbsp;</div>
         <div class="sig-line">Signature &amp; Date: ______________________</div>
       </div>
       <div class="sig-box">
-        <div class="sig-label">Approved By (IT Manager)</div>
+        <div class="sig-label" id="sig-it-dept-label">Approved By (IT Manager)</div>
         <div class="sig-value">&nbsp;</div>
         <div class="sig-line">Signature &amp; Date: ______________________</div>
       </div>
@@ -650,5 +784,51 @@
   </div>
 
 </div>
+
+<script>
+  function applyConfig() {
+    var company  = (document.getElementById('cfg-company').value  || '').trim();
+    var logoUrl  = (document.getElementById('cfg-logo').value     || '').trim();
+    var dept     = (document.getElementById('cfg-dept').value     || '').trim();
+    var contact  = (document.getElementById('cfg-contact').value  || '').trim();
+
+    // ── Company logo ──────────────────────────────────────────────────────────
+    var logoWrap = document.getElementById('company-logo-wrap');
+    var logoImg  = document.getElementById('company-logo-img');
+    if (logoUrl) {
+      logoImg.src = logoUrl;
+      logoWrap.classList.add('has-logo');
+    } else {
+      logoImg.src = '';
+      logoWrap.classList.remove('has-logo');
+    }
+
+    // ── Submitted-to box ──────────────────────────────────────────────────────
+    var box  = document.getElementById('submitted-to-box');
+    var text = document.getElementById('submitted-to-text');
+    var parts = [];
+    if (company) parts.push('<strong>' + escHtml(company) + '</strong>');
+    if (dept)    parts.push(escHtml(dept));
+    if (parts.length > 0) {
+      text.innerHTML = ' ' + parts.join(' — ');
+      box.classList.add('visible');
+    } else {
+      box.classList.remove('visible');
+    }
+
+    // ── Signature block ───────────────────────────────────────────────────────
+    var sigContact = document.getElementById('sig-it-contact');
+    sigContact.innerHTML = contact ? escHtml(contact) : '&nbsp;';
+
+    var sigDeptLabel = document.getElementById('sig-it-dept-label');
+    sigDeptLabel.textContent = dept
+      ? 'Approved By (' + dept + ')'
+      : 'Approved By (IT Manager)';
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
 </body>
 </html>
