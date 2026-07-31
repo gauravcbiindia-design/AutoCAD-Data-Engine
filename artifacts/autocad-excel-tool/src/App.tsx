@@ -89,7 +89,7 @@ function CoverPage({ onEnter }: { onEnter: () => void }) {
     >
       <div className="w-full flex items-center justify-center px-2 pt-4 pb-3">
         <img
-          src="/cover2.png"
+          src={`${import.meta.env.BASE_URL}cover2.png`}
           alt="CAD Data Engine — Gaurav Bharti"
           className="w-full max-w-5xl"
           style={{ maxHeight: "calc(100svh - 64px)", width: "100%", height: "auto", display: "block" }}
@@ -149,7 +149,7 @@ function App() {
       >
         {/* Cover image full-bleed background */}
         <img
-          src="/cover2.png"
+          src={`${import.meta.env.BASE_URL}cover2.png`}
           alt=""
           aria-hidden="true"
           className="absolute inset-0 w-full h-full object-cover"
