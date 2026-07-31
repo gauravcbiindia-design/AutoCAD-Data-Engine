@@ -265,7 +265,7 @@ function App() {
 
           {/* IT Security Doc link */}
           <a
-            href="/it-audit-data-flow.html"
+            href={`${import.meta.env.BASE_URL}it-audit-data-flow.html`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors hover:text-foreground"
