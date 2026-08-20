@@ -17,7 +17,7 @@ export interface FileParsedResult {
 
 export const RAW_COLUMNS = [
   "DWG", "HANDLE", "Entity_Type", "BLOCK", "Layer",
-  "X", "Y", "Attribute_Tag", "Attribute_Value", "Instrument_Type", "Instrument_Number",
+  "X", "Y", "Attribute_Tag", "Attribute_Value", "Instrument",
   "Raw_Text", "Detected_Type", "Ref",
 ] as const;
 

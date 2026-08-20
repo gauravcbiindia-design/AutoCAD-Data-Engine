@@ -64,9 +64,8 @@ export interface RawRow {
   Y: number;
   Attribute_Tag: string;
   Attribute_Value: string;
-  /** Populated on the paired instrument summary row. */
-  Instrument_Type?: string;
-  Instrument_Number?: string;
+  /** Stacked instrument value: code and loop number are emitted on separate rows. */
+  Instrument?: string;
   Raw_Text: string;
   Detected_Type: string;
   Ref: string;  // Nearest line-number or instrument tag (spatial lookup) — blank for TEXT/NOTE/TITLE_BLOCK
@@ -747,7 +746,7 @@ export function extractEngineeringData(
       }
 
       // If this block contains TOP/BOTTOM/MID attributes OR IA-style attrs,
-      // add one combined INSTRUMENT summary row (e.g. "PC", "PG-2104")
+      // add its type and number as two stacked INSTRUMENT rows.
       const hasInstrAttr = attrs.some(
         (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
       );
@@ -758,12 +757,22 @@ export function extractEngineeringData(
             DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
             BLOCK: blockName, Layer: block.layer,
             X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
-            Attribute_Tag: "INSTRUMENT",
-            Attribute_Value: instrMatch.display,
-            Instrument_Type: instrMatch.instrType,
-            Instrument_Number: instrMatch.instrTag,
+            Attribute_Tag: "INSTRUMENT_TYPE",
+            Attribute_Value: instrMatch.instrType,
+            Instrument: instrMatch.instrType,
             Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
           });
+          if (instrMatch.instrTag) {
+            rawRows.push({
+              DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
+              BLOCK: blockName, Layer: block.layer,
+              X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
+              Attribute_Tag: "INSTRUMENT_NUMBER",
+              Attribute_Value: instrMatch.instrTag,
+              Instrument: instrMatch.instrTag,
+              Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
+            });
+          }
         }
       }
 
@@ -924,8 +933,6 @@ export function extractEngineeringData(
       BLOCK: "", Layer: text.layer,
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
-      Instrument_Type: instrumentPair?.instrType,
-      Instrument_Number: instrumentPair?.instrNumber,
       Raw_Text: text.content, Detected_Type: rawDetectedType, Ref: "",
     });
 
@@ -934,6 +941,21 @@ export function extractEngineeringData(
     // Paired ISA instrument labels: type above, loop number below.
     if (instrumentPair) {
       if (instrumentPair.typeIndex === textIndex) {
+        // Keep type and loop number on consecutive rows in the single
+        // Instrument column, matching the requested stacked layout.
+        for (const [attributeTag, instrumentValue] of [
+          ["INSTRUMENT_TYPE", instrumentPair.instrType],
+          ["INSTRUMENT_NUMBER", instrumentPair.instrNumber],
+        ] as const) {
+          rawRows.push({
+            DWG: dwgName, HANDLE: handle, Entity_Type: "TEXT",
+            BLOCK: "", Layer: text.layer,
+            X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
+            Attribute_Tag: attributeTag, Attribute_Value: instrumentValue,
+            Instrument: instrumentValue,
+            Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
+          });
+        }
         const row = emptyRow(dwgName, handle, "INSTRUMENT");
         row.Instrument_Type = instrumentPair.instrType;
         row.Instrument_Tag = instrumentPair.instrNumber;

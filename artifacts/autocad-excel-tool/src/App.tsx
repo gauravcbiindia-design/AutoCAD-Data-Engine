@@ -773,7 +773,7 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
 
   const RAW_PREVIEW_COLS = [
     "DWG", "Entity_Type", "BLOCK", "Layer", "Attribute_Tag", "Attribute_Value",
-    "Instrument_Type", "Instrument_Number", "Raw_Text", "Detected_Type", "Ref",
+    "Instrument", "Raw_Text", "Detected_Type", "Ref",
   ];
   const preview = rawRows.slice(0, 20);
 
@@ -817,8 +817,7 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
                     <td className="px-2 py-1.5 text-muted-foreground">{row.Layer}</td>
                     <td className="px-2 py-1.5 font-mono text-teal-400">{row.Attribute_Tag}</td>
                     <td className="px-2 py-1.5 max-w-[130px] truncate text-foreground font-medium">{row.Attribute_Value}</td>
-                    <td className="px-2 py-1.5 font-mono text-blue-300">{row.Instrument_Type}</td>
-                    <td className="px-2 py-1.5 font-mono text-blue-300">{row.Instrument_Number}</td>
+                    <td className="px-2 py-1.5 font-mono text-blue-300">{row.Instrument}</td>
                     <td className="px-2 py-1.5 max-w-[130px] truncate text-muted-foreground">{row.Raw_Text}</td>
                     <td className="px-2 py-1.5"><TypeBadge type={row.Detected_Type} /></td>
                   </tr>
@@ -837,7 +836,7 @@ function ResultsPanel({ result, doneCount }: { result: ExtractionResult; doneCou
       {/* Column reference */}
       <div className="p-3 rounded-lg bg-muted/30 border border-border text-xs text-muted-foreground">
         <span className="font-semibold text-foreground">CSV columns: </span>
-        <span className="font-mono">DWG · HANDLE · Entity_Type · BLOCK · Layer · X · Y · Attribute_Tag · Attribute_Value · Instrument_Type · Instrument_Number · Raw_Text · Detected_Type</span>
+        <span className="font-mono">DWG · HANDLE · Entity_Type · BLOCK · Layer · X · Y · Attribute_Tag · Attribute_Value · Instrument · Raw_Text · Detected_Type</span>
       </div>
     </div>
   );
