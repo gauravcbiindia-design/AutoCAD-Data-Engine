@@ -74,6 +74,7 @@ function rowsToPatchResult(rows: any[], sourceName: string): ParsedExcelResult {
   const errors: string[] = [];
   const byDwg = new Map<string, DwgPatchMap>();
   let totalChanges = 0;
+  const VIRTUAL_EXPORT_ENTITY_TYPES = new Set(["INSTRUMENT_SLOT"]);
 
   if (rows.length === 0) {
     errors.push(`"${sourceName}" is empty.`);
@@ -99,6 +100,9 @@ function rowsToPatchResult(rows: any[], sourceName: string): ParsedExcelResult {
     const attrValue = removeSpreadsheetTextPrefix(row.Attribute_Value).trim();
     const rawText = removeSpreadsheetTextPrefix(row.Raw_Text).trim();
 
+    // Export-only rows represent intentionally blank drawing positions. They
+    // never map to a source DXF entity and must not create or patch text.
+    if (VIRTUAL_EXPORT_ENTITY_TYPES.has(entityType)) continue;
     if (!handle || handle === "HANDLE") continue;
 
     if (!byDwg.has(dwg)) byDwg.set(dwg, new Map());

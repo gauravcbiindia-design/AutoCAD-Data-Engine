@@ -294,6 +294,13 @@ interface TextInstrumentPair {
   instrNumber: string;
 }
 
+interface EmptyTextInstrumentSlot {
+  typeIndex: number;
+  instrType: string;
+  x: number;
+  y: number;
+}
+
 const GENERIC_INSTRUMENT_CODE_RE = /^[A-Z][A-Z0-9]{0,7}$/;
 const INSTRUMENT_VALUE_RE = /^\d{3,5}[A-Z]?$/i;
 
@@ -430,6 +437,40 @@ function detectTextInstrumentPairs(texts: TextRecord[]): Map<number, TextInstrum
   }
 
   return pairs;
+}
+
+/**
+ * Some drawings leave the lower loop-number position of a loose instrument
+ * label blank. There is no DXF entity to export in that case, so preserve the
+ * expected position as an export-only row instead of silently dropping it.
+ */
+function detectEmptyTextInstrumentSlots(
+  texts: TextRecord[],
+  pairs: Map<number, TextInstrumentPair>,
+): Map<number, EmptyTextInstrumentSlot> {
+  const slots = new Map<number, EmptyTextInstrumentSlot>();
+
+  for (const [typeIndex, typeText] of texts.entries()) {
+    const instrType = stripDxfCodes(typeText.content).trim().toUpperCase();
+
+    // A paired project-specific code has geometric proof. An unpaired label
+    // has no such evidence, so only create a blank lower field for a known
+    // instrument code. This avoids turning ordinary all-caps notes or
+    // equipment labels into false missing-instrument findings.
+    if (!isInstrumentType(instrType) || pairs.has(typeIndex)) continue;
+
+    const typeHeight = typeText.height || 1;
+    slots.set(typeIndex, {
+      typeIndex,
+      instrType,
+      x: typeText.x,
+      // Match the normal stacked-label spacing while keeping the field below
+      // the real source text in CSV reading order.
+      y: typeText.y - (typeHeight * 3.5),
+    });
+  }
+
+  return slots;
 }
 
 /** Build a neutral token list from a line number string */
@@ -988,6 +1029,10 @@ export function extractEngineeringData(
   // OPC pattern for loose text: "FROM ...", "TO ...", "CONT FROM/TO" etc.
   const OPC_LOOSE_RE = /^(?:FROM|TO|CONT(?:INUED)?\s+(?:FROM|TO)|FROM\s+DWG|TO\s+DWG)\b/i;
   const textInstrumentPairs = detectTextInstrumentPairs(parsedData.texts);
+  const emptyTextInstrumentSlots = detectEmptyTextInstrumentSlots(
+    parsedData.texts,
+    textInstrumentPairs,
+  );
 
   for (let textIndex = 0; textIndex < parsedData.texts.length; textIndex++) {
     const text = parsedData.texts[textIndex];
@@ -995,10 +1040,11 @@ export function extractEngineeringData(
     const classified = classifyText(text.content);
     const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
     const instrumentPair = textInstrumentPairs.get(textIndex);
+    const emptyInstrumentSlot = emptyTextInstrumentSlots.get(textIndex);
 
     // TEXT / MTEXT rows labelled by category so engineers can filter each group
     const contentTrim = text.content.trim();
-    const rawDetectedType = instrumentPair                       ? "INSTRUMENTS"
+    const rawDetectedType = instrumentPair || emptyInstrumentSlot ? "INSTRUMENTS"
                           : isOpcText                                   ? "OPC"
                           : classified.textClass === "LINE_NUMBER"      ? "LINE_NUMBER"
                           : classified.textClass === "NOTE"             ? "NOTE"
@@ -1015,6 +1061,8 @@ export function extractEngineeringData(
         ? instrumentPair.typeIndex === textIndex
           ? instrumentPair.instrType
           : instrumentPair.instrNumber
+        : emptyInstrumentSlot
+          ? emptyInstrumentSlot.instrType
         : classified.textClass === "INSTRUMENT_TAG"
           ? classified.clean
           : isInstrumentType(contentTrim)
@@ -1022,6 +1070,27 @@ export function extractEngineeringData(
             : undefined,
       Raw_Text: text.content, Detected_Type: rawDetectedType, Ref: "",
     });
+
+    if (emptyInstrumentSlot) {
+      // This is deliberately not a DXF entity: it represents the empty lower
+      // text position in an instrument bubble, not a value created by the app.
+      rawRows.push({
+        DWG: dwgName, HANDLE: "", Entity_Type: "INSTRUMENT_SLOT",
+        BLOCK: "", Layer: text.layer,
+        X: +emptyInstrumentSlot.x.toFixed(4), Y: +emptyInstrumentSlot.y.toFixed(4),
+        Attribute_Tag: "INSTRUMENT_LOOP_NUMBER", Attribute_Value: "",
+        Instrument: "", Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
+      });
+
+      const row = emptyRow(dwgName, handle, "INSTRUMENT");
+      row.Instrument_Type = emptyInstrumentSlot.instrType;
+      row.Instrument_Display = emptyInstrumentSlot.instrType;
+      row.Visible_Text = emptyInstrumentSlot.instrType;
+      row.Source_Field = text.layer;
+      row.Remarks = "Loop/tag field is blank in drawing";
+      engineerRows.push(row);
+      continue;
+    }
 
     const cleanVal = classified.clean;
 
