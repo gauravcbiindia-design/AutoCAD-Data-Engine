@@ -13,6 +13,11 @@ export interface FileParsedResult {
   data: import("./dxfParser").ParsedDxfData;
 }
 
+// Excel ignores leading whitespace and some invisible Unicode characters while
+// deciding whether a CSV cell is a formula. Include them in the check so a DXF
+// value such as "\uFEFF-A50QA1-N" cannot bypass text protection.
+const SPREADSHEET_FORMULA_START = /^[\u0000-\u0020\u200B\uFEFF]*[=+\-@#]/;
+
 // ── Column order ───────────────────────────────────────────────────────────────
 
 export const RAW_COLUMNS = [
@@ -79,7 +84,7 @@ export function buildRawCsvString(result: ExtractionResult): string {
     // values such as "-A03AB1-HC" would otherwise evaluate to #NAME? and could
     // be written back into the DXF as the error. A leading apostrophe makes the
     // cell plain text in Excel and is not displayed to the user.
-    const s = /^[=+\-@#]/.test(raw) ? `'${raw}` : raw;
+    const s = SPREADSHEET_FORMULA_START.test(raw) ? `'${raw}` : raw;
     if (s.includes(",") || s.includes('"') || s.includes("\n")) {
       return '"' + s.replace(/"/g, '""') + '"';
     }

@@ -255,7 +255,7 @@ function isInterlockCode(code: string): boolean {
 
 // ── Instrument loop number detector ───────────────────────────────────────────
 // Standalone 3–4 digit numbers are instrument loop numbers separated from tag
-const INSTR_NUM_RE = /^\d{3,4}$/;
+const INSTR_NUM_RE = /^\d{3,5}$/;
 
 function isInstrumentNumber(val: string): boolean {
   return INSTR_NUM_RE.test(val.trim());
@@ -394,7 +394,7 @@ function detectInstrument(
       "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
       "LOOP", "LOOP_NO", "LOOPNO", "LOOP_NUMBER", "LOOP_NUM",
       "TAG", "ITEM", "ITEM_NO", "ID", "ID_NO",
-      "REF", "REF_NO", "SEQ", "SEQ_NO",
+      "REF", "REF_NO", "SEQ", "SEQ_NO", "CODE", "CODE_NO",
       "MID", "MIDATTR", "SUFFIX", "AREA_NUM",
     ];
     for (const t of NUMBER_TAGS) {
@@ -413,7 +413,7 @@ function detectInstrument(
 
   // ── Pass 1: Known TOP attribute tags ────────────────────────────────────
   const TOP_TAGS = [
-    "TOP", "TOPATTR", "FUNCTN", "FUNCTION", "INSTRUMENT",
+    "TOP", "TOPATTR", "FUNCT", "FUNCTN", "FUNCTION", "INSTRUMENT",
     "TYPE", "INSTR_TYPE", "INST_TYPE", "TAG_TYPE",
   ];
   for (const t of TOP_TAGS) {
@@ -615,7 +615,7 @@ export function extractEngineeringData(
       // Tags that identify instrument data in P&ID blocks
       // SUBFIX/SUFFIX = alarm suffix tag (e.g. PDI-2104-H where SUBFIX="H")
       const INSTRUMENT_ATTR_TAGS = new Set([
-        "TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCTN", "FUNCTION",
+        "TOP", "BOTTOM", "MID", "TOPATTR", "BOTATTR", "FUNCT", "FUNCTN", "FUNCTION",
         "SUBFIX", "SUFFIX",
       ]);
 
@@ -661,7 +661,7 @@ export function extractEngineeringData(
       const INSTR_NUMBER_ATTR_TAGS = new Set([
         "BOTTOM", "BOTATTR", "NUMBER", "NUM", "TAGNO", "TAG_NO",
         "TAG", "ITEM", "ITEM_NO", "MID", "MIDATTR", "LOOP", "LOOP_NO",
-        "SUBFIX", "SUFFIX",
+        "SUBFIX", "SUFFIX", "CODE", "CODE_NO",
       ]);
       // Block has an instrument type — via standard attr tags OR via block name (e.g. "PG", "TG")
       // blockInstrMatch uses 4-pass detection including block name prefix, so if it's non-null
