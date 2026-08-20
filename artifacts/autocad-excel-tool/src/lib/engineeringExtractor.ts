@@ -64,6 +64,9 @@ export interface RawRow {
   Y: number;
   Attribute_Tag: string;
   Attribute_Value: string;
+  /** Populated on the paired instrument summary row. */
+  Instrument_Type?: string;
+  Instrument_Number?: string;
   Raw_Text: string;
   Detected_Type: string;
   Ref: string;  // Nearest line-number or instrument tag (spatial lookup) — blank for TEXT/NOTE/TITLE_BLOCK
@@ -140,6 +143,7 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   // ── Project-specific compound types ───────────────────────────────────────────
   XZSOC:"Instrument (XZSOC)", X2LOC:"Local Control (X2LOC)",
   XZLOC:"Local Control (XZLOC)", X2SOC:"Instrument (X2SOC)",
+  XYZ:"Instrument (XYZ)", XZS:"Instrument (XZS)", XYX:"Instrument (XYX)",
 };
 
 // ── Stream number detector ─────────────────────────────────────────────────────
@@ -690,6 +694,8 @@ export function extractEngineeringData(
             X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
             Attribute_Tag: "INSTRUMENT",
             Attribute_Value: instrMatch.display,
+            Instrument_Type: instrMatch.instrType,
+            Instrument_Number: instrMatch.instrTag,
             Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
           });
         }

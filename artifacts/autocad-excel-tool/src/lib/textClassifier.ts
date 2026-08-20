@@ -97,6 +97,10 @@ const INSTRUMENT_TYPES: Record<string, string> = {
   WT: "Weight Transmitter",
   WI: "Weight Indicator",
   JT: "Power Transmitter",
+  // Project-specific instrument codes seen in the drawings
+  XYZ: "Instrument (XYZ)",
+  XZS: "Instrument (XZS)",
+  XYX: "Instrument (XYX)",
 };
 
 // ── Regex patterns ────────────────────────────────────────────────────────────

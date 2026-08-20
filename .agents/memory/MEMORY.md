@@ -1,2 +1,3 @@
 - [Spreadsheet-safe CSV exports](spreadsheet-safe-csv-exports.md) — Engineering text that begins with formula characters must remain text in Excel and during DXF write-back.
 - [Hyphenated line numbers](hyphenated-line-numbers.md) — Treat any non-title AutoCAD value with two or more hyphens as a line number.
+- [Stacked instrument labels](stacked-instrument-labels.md) — Pair an instrument code above its numeric text as type and loop number in export.
