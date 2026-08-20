@@ -28,13 +28,13 @@ import * as XLSX from "xlsx";
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 /**
- * RAW_EXPORT.csv adds a leading apostrophe before formula-like text so Excel
+ * RAW_EXPORT.csv adds a leading apostrophe before formula/error-like text so Excel
  * keeps it as text. Remove only that known protection during write-back, so the
  * DXF receives the original engineering value (for example, "-A03AB1-HC").
  */
 function removeSpreadsheetTextPrefix(value: unknown): string {
   const text = String(value ?? "");
-  return text.startsWith("'") && /^[=+\-@]/.test(text.slice(1))
+  return text.startsWith("'") && /^[=+\-@#]/.test(text.slice(1))
     ? text.slice(1)
     : text;
 }

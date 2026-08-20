@@ -62,11 +62,12 @@ export function buildRawCsvString(result: ExtractionResult): string {
 
   const escape = (v: unknown) => {
     const raw = String(v ?? "");
-    // Excel treats cells beginning with =, +, - or @ as formulas. Engineering
+    // Excel treats cells beginning with =, +, -, @ or # as formulas/errors.
+    // Engineering
     // values such as "-A03AB1-HC" would otherwise evaluate to #NAME? and could
     // be written back into the DXF as the error. A leading apostrophe makes the
     // cell plain text in Excel and is not displayed to the user.
-    const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+    const s = /^[=+\-@#]/.test(raw) ? `'${raw}` : raw;
     if (s.includes(",") || s.includes('"') || s.includes("\n")) {
       return '"' + s.replace(/"/g, '""') + '"';
     }
