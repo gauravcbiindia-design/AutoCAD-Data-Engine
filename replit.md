@@ -94,3 +94,14 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+## Magnifier semantic review direction
+
+Magnifier is intended to understand engineering drawings, not only extract text. Use the supplied P&ID/PFD legends as the semantic reference:
+
+- Treat entity/block membership, symbols, coordinates, and nearby text relationships as primary evidence; do not depend on a fixed project-specific function-code list.
+- In an instrument bubble/block, the upper text is the function/instrument text and the vertically aligned lower text is its corresponding value or loop number.
+- Preserve both source values and their drawing order. Do not replace them with artificial summary rows.
+- Build a semantic process view of equipment, lines, streams, valves, instruments, and connections.
+- Flag likely omissions or inconsistencies—unpaired instrument text/value, orphan or unexpectedly terminated lines, suspiciously unconnected equipment, duplicate tags, and nearby unclassified engineering text.
+- Every finding must include the drawing location, related entities, reason, and confidence. Never silently invent engineering values; uncertain cases belong in an engineer-review queue.
