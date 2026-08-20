@@ -27,6 +27,18 @@ import * as XLSX from "xlsx";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+/**
+ * RAW_EXPORT.csv adds a leading apostrophe before formula-like text so Excel
+ * keeps it as text. Remove only that known protection during write-back, so the
+ * DXF receives the original engineering value (for example, "-A03AB1-HC").
+ */
+function removeSpreadsheetTextPrefix(value: unknown): string {
+  const text = String(value ?? "");
+  return text.startsWith("'") && /^[=+\-@]/.test(text.slice(1))
+    ? text.slice(1)
+    : text;
+}
+
 /** One editable row read from RAW_EXPORT sheet */
 export interface RawExportRow {
   dwg: string;           // source DXF filename (no extension)
@@ -80,12 +92,12 @@ function rowsToPatchResult(rows: any[], sourceName: string): ParsedExcelResult {
   for (const row of rows) {
     if (!row.DWG || !row.HANDLE) continue;
 
-    const dwg = String(row.DWG).trim().replace(/\.dxf$/i, "").replace(/\.dwg$/i, "");
-    const handle = String(row.HANDLE).trim().toUpperCase();
-    const entityType = String(row.Entity_Type || "").trim().toUpperCase();
-    const attrTag = String(row.Attribute_Tag || "").trim();
-    const attrValue = String(row.Attribute_Value ?? "").trim();
-    const rawText = String(row.Raw_Text ?? "").trim();
+    const dwg = removeSpreadsheetTextPrefix(row.DWG).trim().replace(/\.dxf$/i, "").replace(/\.dwg$/i, "");
+    const handle = removeSpreadsheetTextPrefix(row.HANDLE).trim().toUpperCase();
+    const entityType = removeSpreadsheetTextPrefix(row.Entity_Type).trim().toUpperCase();
+    const attrTag = removeSpreadsheetTextPrefix(row.Attribute_Tag).trim();
+    const attrValue = removeSpreadsheetTextPrefix(row.Attribute_Value).trim();
+    const rawText = removeSpreadsheetTextPrefix(row.Raw_Text).trim();
 
     if (!handle || handle === "HANDLE") continue;
 

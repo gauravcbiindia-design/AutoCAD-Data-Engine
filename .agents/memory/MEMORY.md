@@ -1,0 +1,1 @@
+- [Spreadsheet-safe CSV exports](spreadsheet-safe-csv-exports.md) — Engineering text that begins with formula characters must remain text in Excel and during DXF write-back.
