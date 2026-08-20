@@ -111,6 +111,10 @@ const INSTRUMENT_TAG_RE = /^([A-Z]{1,4})-(\d{2,5}[A-Z]?)$/;
 // Suffix can be 1 char (-H, -P, -T) or longer (-INS, -HT, -ELEC)
 const LINE_NUMBER_RE = /^(?:\d{1,4}|[A-Z]{1,3})["']?[-–]\s*[A-Z]{1,4}[-–]\s*\d{2,6}(?:[-–][A-Z0-9]{1,6}){0,4}$/i;
 
+// Project rule: AutoCAD strings containing two or more hyphens are line-number
+// data, even when they do not match one of the standard line-number formats.
+const MULTI_HYPHEN_LINE_RE = /[-–—].*[-–—]/;
+
 // Size patterns: 4", 4IN, DN100, NPS 6, 2" x 1"
 const SIZE_RE = /^(?:(?:\d{1,3}(?:\.\d+)?["']?\s*(?:x\s*\d{1,3}(?:\.\d+)?["']?)?)|(?:DN\s*\d{1,4})|(?:NPS\s*\d{1,3})|(?:\d{1,3}\s*(?:mm|in|inch)))$/i;
 
@@ -193,7 +197,7 @@ export function classifyText(raw: string): ClassifiedText {
   }
 
   // 5. Line number
-  if (LINE_NUMBER_RE.test(clean)) {
+  if (MULTI_HYPHEN_LINE_RE.test(clean) || LINE_NUMBER_RE.test(clean)) {
     return {
       ...base,
       textClass: "LINE_NUMBER",

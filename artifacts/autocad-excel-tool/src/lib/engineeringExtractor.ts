@@ -473,7 +473,8 @@ function detectLineNumber(attrs: { tag: string; value: string }[]): string {
   // Fall back: any attr value that looks like a line number
   const LINE_RE = /^\d{1,4}["']?[-–]\s*[A-Z]{1,4}[-–]\s*\d{2,6}(?:[-–][A-Z0-9]{2,6}){0,3}$/i;
   for (const a of attrs) {
-    if (LINE_RE.test(a.value.trim())) return a.value.trim();
+    const value = a.value.trim();
+    if (LINE_RE.test(value) || /[-–—].*[-–—]/.test(value)) return value;
   }
 
   return "";
@@ -634,12 +635,15 @@ export function extractEngineeringData(
         const isInterlockValue = isInterlockCode(valTrim);
         // 3–4 digit standalone numbers = instrument loop numbers split from their tag
         const isInstrNum      = isInstrumentNumber(valTrim);
+        // Project rule: any non-title AutoCAD value with 2+ hyphens is a line number.
+        const isMultiHyphenLine = /[-–—].*[-–—]/.test(valTrim);
         // Blank NUMBER/BOTTOM/TAGNO attr in an instrument block → keep for engineer to fill in
         const isBlankInstrSlot = blockHasInstrType && INSTR_NUMBER_ATTR_TAGS.has(tagUpper);
         // IA-attr in an IA-type block (blank tag slots user needs to fill in)
         const isIaSlot         = isIaAttr && blockHasIaType;
         const classified   = classifyText(attr.value);
         const detectedType = blockIsTitleBlock           ? "TITLE_BLOCK"
+                           : isMultiHyphenLine         ? "LINE_NUMBER"
                            : blockHasStreamAttrs      ? "STREAM"      // PFD stream diamond (LA000/LA001, FSM* blocks)
                            : blockHasInterlockValue   ? "INTERLOCK"   // whole Z-block = INTERLOCK (blank attrs too)
                            : blockIsValve             ? "VALVES"      // blank TOP/BOTTOM/MID = valve symbol
