@@ -1,4 +1,5 @@
 - [Spreadsheet-safe CSV exports](spreadsheet-safe-csv-exports.md) — Engineering text that begins with formula characters must remain text in Excel and during DXF write-back.
 - [Hyphenated line numbers](hyphenated-line-numbers.md) — Treat any non-title AutoCAD value with two or more hyphens as a line number.
 - [Stacked instrument labels](stacked-instrument-labels.md) — Pair an instrument code above its numeric text as type and loop number in export.
+- [Legend semantic model](legend-semantic-model.md) — Reuse legend-derived engineering meaning across extraction and the future Magnifier app, not only fixed code lists.
 - [Spatial CSV order](spatial-csv-order.md) — Preserve drawing proximity in exports instead of grouping detected entities artificially.
