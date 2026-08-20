@@ -655,7 +655,6 @@ export function extractEngineeringData(
       // Pre-compute full instrument tag for this block (e.g. "TT-2411")
       // so every attribute row can reference which instrument it belongs to
       const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs, blockName);
-      const blockFullTag = blockInstrMatch?.display || "";
 
       // Attribute tags that hold the instrument NUMBER/LOOP in P&ID blocks
       // If blank → still keep in CSV so engineer can fill in the missing number
@@ -732,6 +731,13 @@ export function extractEngineeringData(
 
         // Strip AutoCAD formatting codes (%%U etc.) from displayed value
         const cleanValue = stripDxfCodes(attr.value);
+        // Keep the value on its original attribute row so the CSV preserves
+        // the drawing's local TOP/BOTTOM relationship.
+        const isInstrumentStackValue = blockHasInstrType && (
+          isInstrValue ||
+          /^\d{3,5}[A-Z]?$/i.test(valTrim) ||
+          /^[A-Z]{1,4}[-–]\d{2,5}[A-Z]?$/i.test(valTrim)
+        );
 
         // Use the individual ATTRIB entity's own handle for write-back accuracy.
         // Fall back to INSERT block handle if ATTRIB handle is missing.
@@ -741,39 +747,9 @@ export function extractEngineeringData(
           BLOCK: blockName, Layer: block.layer,
           X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
+          Instrument: isInstrumentStackValue ? cleanValue : undefined,
           Raw_Text: "", Detected_Type: detectedType, Ref: "",
         });
-      }
-
-      // If this block contains TOP/BOTTOM/MID attributes OR IA-style attrs,
-      // add its type and number as two stacked INSTRUMENT rows.
-      const hasInstrAttr = attrs.some(
-        (a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim())
-      );
-      if ((hasInstrAttr || blockHasIaType) && !blockIsTitleBlock) {
-        const instrMatch = detectInstrument(attrs, blockName);
-        if (instrMatch) {
-          rawRows.push({
-            DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
-            BLOCK: blockName, Layer: block.layer,
-            X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
-            Attribute_Tag: "INSTRUMENT_TYPE",
-            Attribute_Value: instrMatch.instrType,
-            Instrument: instrMatch.instrType,
-            Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
-          });
-          if (instrMatch.instrTag) {
-            rawRows.push({
-              DWG: dwgName, HANDLE: handle, Entity_Type: "INSERT",
-              BLOCK: blockName, Layer: block.layer,
-              X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
-              Attribute_Tag: "INSTRUMENT_NUMBER",
-              Attribute_Value: instrMatch.instrTag,
-              Instrument: instrMatch.instrTag,
-              Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
-            });
-          }
-        }
       }
 
       // If this block contains EQ* attributes, add one combined EQUIPMENT summary row
@@ -933,6 +909,15 @@ export function extractEngineeringData(
       BLOCK: "", Layer: text.layer,
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
+      Instrument: instrumentPair
+        ? instrumentPair.typeIndex === textIndex
+          ? instrumentPair.instrType
+          : instrumentPair.instrNumber
+        : classified.textClass === "INSTRUMENT_TAG"
+          ? classified.clean
+          : isInstrumentType(contentTrim)
+            ? contentTrim.toUpperCase()
+            : undefined,
       Raw_Text: text.content, Detected_Type: rawDetectedType, Ref: "",
     });
 
@@ -941,21 +926,6 @@ export function extractEngineeringData(
     // Paired ISA instrument labels: type above, loop number below.
     if (instrumentPair) {
       if (instrumentPair.typeIndex === textIndex) {
-        // Keep type and loop number on consecutive rows in the single
-        // Instrument column, matching the requested stacked layout.
-        for (const [attributeTag, instrumentValue] of [
-          ["INSTRUMENT_TYPE", instrumentPair.instrType],
-          ["INSTRUMENT_NUMBER", instrumentPair.instrNumber],
-        ] as const) {
-          rawRows.push({
-            DWG: dwgName, HANDLE: handle, Entity_Type: "TEXT",
-            BLOCK: "", Layer: text.layer,
-            X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
-            Attribute_Tag: attributeTag, Attribute_Value: instrumentValue,
-            Instrument: instrumentValue,
-            Raw_Text: "", Detected_Type: "INSTRUMENTS", Ref: "",
-          });
-        }
         const row = emptyRow(dwgName, handle, "INSTRUMENT");
         row.Instrument_Type = instrumentPair.instrType;
         row.Instrument_Tag = instrumentPair.instrNumber;

@@ -61,6 +61,17 @@ export function buildRawCsvString(result: ExtractionResult): string {
     return true;
   });
 
+  // Match the drawing's reading order: top-to-bottom, then left-to-right.
+  // Rows sharing the same coordinates retain their original DXF order, which
+  // keeps stacked attributes such as instrument type and loop number together.
+  rows.sort((a: any, b: any) => {
+    const dwgCompare = String(a.DWG ?? "").localeCompare(String(b.DWG ?? ""));
+    if (dwgCompare !== 0) return dwgCompare;
+    const yDelta = Number(b.Y ?? 0) - Number(a.Y ?? 0);
+    if (Math.abs(yDelta) > 0.001) return yDelta;
+    return Number(a.X ?? 0) - Number(b.X ?? 0);
+  });
+
   const escape = (v: unknown) => {
     const raw = String(v ?? "");
     // Excel treats cells beginning with =, +, -, @ or # as formulas/errors.
