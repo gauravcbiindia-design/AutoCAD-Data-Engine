@@ -235,7 +235,11 @@ const INTERLOCK_VALUES = new Set([
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function isInstrumentType(code: string): boolean {
-  return !!INSTRUMENT_TYPES[code.toUpperCase().trim()];
+  const clean = code.toUpperCase().trim();
+  // ISA drawings also use project-specific X-prefixed combinations such as
+  // XYZ, XZS and XYX. Keep this deliberately short to avoid treating words
+  // in notes as instrument codes.
+  return !!INSTRUMENT_TYPES[clean] || /^X[A-Z]{1,3}$/.test(clean);
 }
 
 function isComponentType(code: string): boolean {
@@ -282,6 +286,68 @@ function stripDxfCodes(val: string): string {
     .replace(/%%[Pp]/g, "±")
     .replace(/%%[Cc]/g, "Ø")
     .trim();
+}
+
+interface TextInstrumentPair {
+  typeIndex: number;
+  numberIndex: number;
+  instrType: string;
+  instrNumber: string;
+}
+
+/**
+ * Pair the two loose TEXT/MTEXT entities used by an ISA instrument bubble:
+ * the instrument code is above the numeric loop number. DXF coordinates use
+ * increasing Y upward, so the number is below the type when number.y < type.y.
+ */
+function detectTextInstrumentPairs(texts: TextRecord[]): Map<number, TextInstrumentPair> {
+  const pairs = new Map<number, TextInstrumentPair>();
+  const usedNumberIndexes = new Set<number>();
+
+  const loopNumberRe = /^\d{3,5}[A-Z]?$/i;
+  const typeIndexes = texts
+    .map((text, index) => ({ text, index, value: stripDxfCodes(text.content).toUpperCase() }))
+    .filter(({ value }) => isInstrumentType(value));
+
+  for (const { text: typeText, index: typeIndex, value: instrType } of typeIndexes) {
+    const typeHeight = typeText.height || 1;
+    const candidates = texts
+      .map((text, index) => ({ text, index, value: stripDxfCodes(text.content).trim() }))
+      .filter(({ text, index, value }) => {
+        if (index === typeIndex || usedNumberIndexes.has(index)) return false;
+        if (!loopNumberRe.test(value)) return false;
+        if (text.layer !== typeText.layer) return false;
+
+        const verticalGap = typeText.y - text.y;
+        const horizontalGap = Math.abs(typeText.x - text.x);
+        const numberHeight = text.height || typeHeight;
+        const maxVerticalGap = Math.max(typeHeight, numberHeight) * 5;
+        const maxHorizontalGap = Math.max(typeHeight, numberHeight) * 2;
+        return verticalGap > 0 &&
+          verticalGap <= maxVerticalGap &&
+          horizontalGap <= maxHorizontalGap;
+      })
+      .sort((a, b) => {
+        const aDistance = Math.abs(typeText.x - a.text.x) + (typeText.y - a.text.y);
+        const bDistance = Math.abs(typeText.x - b.text.x) + (typeText.y - b.text.y);
+        return aDistance - bDistance;
+      });
+
+    const match = candidates[0];
+    if (!match) continue;
+
+    const pair: TextInstrumentPair = {
+      typeIndex,
+      numberIndex: match.index,
+      instrType,
+      instrNumber: match.value.toUpperCase(),
+    };
+    pairs.set(typeIndex, pair);
+    pairs.set(match.index, pair);
+    usedNumberIndexes.add(match.index);
+  }
+
+  return pairs;
 }
 
 /** Build a neutral token list from a line number string */
@@ -834,15 +900,19 @@ export function extractEngineeringData(
   // ── 2. TEXT / MTEXT entities ──────────────────────────────────────────────
   // OPC pattern for loose text: "FROM ...", "TO ...", "CONT FROM/TO" etc.
   const OPC_LOOSE_RE = /^(?:FROM|TO|CONT(?:INUED)?\s+(?:FROM|TO)|FROM\s+DWG|TO\s+DWG)\b/i;
+  const textInstrumentPairs = detectTextInstrumentPairs(parsedData.texts);
 
-  for (const text of parsedData.texts) {
+  for (let textIndex = 0; textIndex < parsedData.texts.length; textIndex++) {
+    const text = parsedData.texts[textIndex];
     const handle = text.handle || "";
     const classified = classifyText(text.content);
     const isOpcText = OPC_LOOSE_RE.test(text.content.trim());
+    const instrumentPair = textInstrumentPairs.get(textIndex);
 
     // TEXT / MTEXT rows labelled by category so engineers can filter each group
     const contentTrim = text.content.trim();
-    const rawDetectedType = isOpcText                                   ? "OPC"
+    const rawDetectedType = instrumentPair                       ? "INSTRUMENTS"
+                          : isOpcText                                   ? "OPC"
                           : classified.textClass === "LINE_NUMBER"      ? "LINE_NUMBER"
                           : classified.textClass === "NOTE"             ? "NOTE"
                           : classified.textClass === "INSTRUMENT_TAG"   ? "INSTRUMENTS"
@@ -854,10 +924,26 @@ export function extractEngineeringData(
       BLOCK: "", Layer: text.layer,
       X: +text.x.toFixed(4), Y: +text.y.toFixed(4),
       Attribute_Tag: "", Attribute_Value: "",
+      Instrument_Type: instrumentPair?.instrType,
+      Instrument_Number: instrumentPair?.instrNumber,
       Raw_Text: text.content, Detected_Type: rawDetectedType, Ref: "",
     });
 
     const cleanVal = classified.clean;
+
+    // Paired ISA instrument labels: type above, loop number below.
+    if (instrumentPair) {
+      if (instrumentPair.typeIndex === textIndex) {
+        const row = emptyRow(dwgName, handle, "INSTRUMENT");
+        row.Instrument_Type = instrumentPair.instrType;
+        row.Instrument_Tag = instrumentPair.instrNumber;
+        row.Instrument_Display = `${instrumentPair.instrType}-${instrumentPair.instrNumber}`;
+        row.Visible_Text = `${instrumentPair.instrType} ${instrumentPair.instrNumber}`;
+        row.Source_Field = text.layer;
+        engineerRows.push(row);
+      }
+      continue;
+    }
 
     // Skip pure garbage / revision / notes
     if (!classified.isUseful) continue;
@@ -895,6 +981,18 @@ export function extractEngineeringData(
       row.Instrument_Tag = classified.tagValue || "";
       row.Instrument_Display = classified.instrumentType && classified.tagValue
         ? `${classified.instrumentType}-${classified.tagValue}` : cleanVal;
+      row.Visible_Text = cleanVal;
+      row.Source_Field = text.layer;
+      engineerRows.push(row);
+      continue;
+    }
+
+    // A standalone instrument code is still useful even when its loop number
+    // is absent or could not be paired spatially.
+    if (isInstrumentType(contentTrim)) {
+      const row = emptyRow(dwgName, handle, "INSTRUMENT");
+      row.Instrument_Type = contentTrim.toUpperCase();
+      row.Instrument_Display = contentTrim.toUpperCase();
       row.Visible_Text = cleanVal;
       row.Source_Field = text.layer;
       engineerRows.push(row);
