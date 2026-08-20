@@ -99,4 +99,82 @@ assert.ok(formulaSafeCsv.includes(",CLASS,'-A50QA1-N,"));
 assert.ok(formulaSafeCsv.includes(",CLASS,'=-A50QA1-N,"));
 assert.ok(formulaSafeCsv.includes(",CLASS,'\uFEFF-B50QA1-N,"));
 
-console.log("Instrument FUNCT/CODE export test passed.");
+const spatialProjectInstrument: ParsedDxfData = {
+  blocks: [{
+    blockName: "PROJECT_SPECIFIC_BUBBLE",
+    layer: "P&ID",
+    x: 500,
+    y: 500,
+    z: 0,
+    handle: "B200",
+    attributes: [
+      {
+        tag: "PROJECT_FUNCTION",
+        value: "QRT",
+        x: 500,
+        y: 510,
+        height: 2,
+        handle: "A200",
+      },
+      {
+        tag: "PROJECT_VALUE",
+        value: "71005",
+        x: 500.5,
+        y: 503,
+        height: 2,
+        handle: "A201",
+      },
+    ],
+  }],
+  texts: [
+    {
+      type: "TEXT",
+      content: "CUSTOM7",
+      layer: "P&ID",
+      x: 700,
+      y: 510,
+      z: 0,
+      height: 2,
+      handle: "T200",
+    },
+    {
+      type: "TEXT",
+      content: "71006",
+      layer: "P&ID",
+      x: 700.5,
+      y: 503,
+      z: 0,
+      height: 2,
+      handle: "T201",
+    },
+  ],
+  layers: ["P&ID"],
+  errors: [],
+};
+
+const spatialExtracted = extractEngineeringData("spatial.dxf", spatialProjectInstrument);
+
+assert.deepEqual(
+  spatialExtracted.rawRows
+    .filter((row) => ["QRT", "71005", "CUSTOM7", "71006"].includes(row.Attribute_Value || row.Raw_Text))
+    .map((row) => ({
+      value: row.Attribute_Value || row.Raw_Text,
+      instrument: row.Instrument,
+      type: row.Detected_Type,
+    })),
+  [
+    { value: "QRT", instrument: "QRT", type: "INSTRUMENTS" },
+    { value: "71005", instrument: "71005", type: "INSTRUMENTS" },
+    { value: "CUSTOM7", instrument: "CUSTOM7", type: "INSTRUMENTS" },
+    { value: "71006", instrument: "71006", type: "INSTRUMENTS" },
+  ],
+);
+
+assert.ok(spatialExtracted.engineerRows.some((row) =>
+  row.Instrument_Type === "QRT" && row.Instrument_Tag === "71005",
+));
+assert.ok(spatialExtracted.engineerRows.some((row) =>
+  row.Instrument_Type === "CUSTOM7" && row.Instrument_Tag === "71006",
+));
+
+console.log("Instrument spatial pairing and spreadsheet-safe CSV tests passed.");

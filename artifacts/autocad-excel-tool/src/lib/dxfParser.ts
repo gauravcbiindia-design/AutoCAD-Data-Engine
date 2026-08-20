@@ -12,6 +12,9 @@ export interface BlockAttribute {
   value: string;
   prompt?: string;  // attribute prompt text (DXF group code 3) — e.g. "STREAM NUMBER"
   handle?: string;  // individual ATTRIB entity's own DXF handle (for write-back)
+  x?: number;       // ATTRIB insertion point, used for spatial pairing
+  y?: number;
+  height?: number;  // text height, used to scale pairing tolerance
 }
 
 export interface BlockRecord {
@@ -71,6 +74,7 @@ interface RawAttrib {
   prompt: string;   // group code 3 — attribute prompt text
   x: number;
   y: number;
+  height: number;
 }
 
 interface RawInsert {
@@ -128,7 +132,7 @@ function parseEntitiesSection(pairs: DxfGroupPair[]): {
     }
 
     if (p.code === 0 && p.value === "ATTRIB") {
-      const att: RawAttrib = { layer: "0", tag: "", value: "", prompt: "", x: 0, y: 0 };
+      const att: RawAttrib = { layer: "0", tag: "", value: "", prompt: "", x: 0, y: 0, height: 0 };
       i++;
       while (i < pairs.length && !(pairs[i].code === 0)) {
         const { code, value } = pairs[i];
@@ -140,6 +144,7 @@ function parseEntitiesSection(pairs: DxfGroupPair[]): {
         else if (code === 3) att.prompt = value;   // attribute prompt text
         else if (code === 10) att.x = parseFloat(value) || 0;
         else if (code === 20) att.y = parseFloat(value) || 0;
+        else if (code === 40) att.height = parseFloat(value) || 0;
         i++;
       }
       if (att.tag) attribs.push(att);
@@ -270,7 +275,17 @@ export function parseDxf(fileContent: string): ParsedDxfData {
           if (!attribsByOwner.has(currentInsertHandle)) attribsByOwner.set(currentInsertHandle, []);
           const existing = attribsByOwner.get(currentInsertHandle)!;
           if (!existing.find((a) => a.tag === tag)) {
-            existing.push({ handle: attHandle, ownerHandle: currentInsertHandle, layer: "0", tag, value, prompt, x: 0, y: 0 });
+            existing.push({
+              handle: attHandle,
+              ownerHandle: currentInsertHandle,
+              layer: "0",
+              tag,
+              value,
+              prompt,
+              x: 0,
+              y: 0,
+              height: 0,
+            });
           }
         }
         i = j;
@@ -297,6 +312,9 @@ export function parseDxf(fileContent: string): ParsedDxfData {
       value: a.value,
       prompt: a.prompt || "",  // attribute prompt text — used for stream/type detection
       handle: a.handle,        // ATTRIB entity's own handle — used for DXF write-back
+      x: a.x,
+      y: a.y,
+      height: a.height,
     }));
 
     blocks.push({

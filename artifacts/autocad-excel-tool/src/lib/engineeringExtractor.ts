@@ -7,7 +7,7 @@
  */
 
 import { classifyText, getInstrumentTypeName } from "./textClassifier";
-import type { ParsedDxfData, BlockRecord, TextRecord } from "./dxfParser";
+import type { ParsedDxfData, BlockRecord, BlockAttribute, TextRecord } from "./dxfParser";
 
 // ── Category types ─────────────────────────────────────────────────────────────
 
@@ -294,19 +294,102 @@ interface TextInstrumentPair {
   instrNumber: string;
 }
 
+const GENERIC_INSTRUMENT_CODE_RE = /^[A-Z][A-Z0-9]{0,7}$/;
+const INSTRUMENT_VALUE_RE = /^\d{3,5}[A-Z]?$/i;
+
+/**
+ * Project drawings do not use one universal attribute tag for the function
+ * code. Detect a stacked code/value pair from the drawing geometry instead:
+ * short code-like text above a nearby numeric value.
+ */
+function isGenericInstrumentCode(value: string): boolean {
+  const clean = stripDxfCodes(value).trim().toUpperCase();
+  return GENERIC_INSTRUMENT_CODE_RE.test(clean) && !INSTRUMENT_VALUE_RE.test(clean);
+}
+
+function detectAttributeInstrumentPairs(
+  attrs: BlockAttribute[],
+): Map<number, TextInstrumentPair> {
+  const pairs = new Map<number, TextInstrumentPair>();
+  const usedNumberIndexes = new Set<number>();
+  const hasCoordinates = attrs.some((attr) =>
+    Number.isFinite(attr.x) && Number.isFinite(attr.y) &&
+    (attr.x !== 0 || attr.y !== 0),
+  );
+
+  // Older/synthetic block data may not contain ATTRIB coordinates. In that
+  // case retain the existing attribute-name/value detection instead of
+  // guessing a spatial relationship.
+  if (!hasCoordinates) return pairs;
+
+  const typeIndexes = attrs
+    .map((attr, index) => ({
+      attr,
+      index,
+      value: stripDxfCodes(attr.value).trim().toUpperCase(),
+    }))
+    .filter(({ value }) => isGenericInstrumentCode(value));
+
+  for (const { attr: typeAttr, index: typeIndex, value: instrType } of typeIndexes) {
+    const typeHeight = typeAttr.height || 1;
+    const candidates = attrs
+      .map((attr, index) => ({
+        attr,
+        index,
+        value: stripDxfCodes(attr.value).trim(),
+      }))
+      .filter(({ attr, index, value }) => {
+        if (index === typeIndex || usedNumberIndexes.has(index)) return false;
+        if (!INSTRUMENT_VALUE_RE.test(value)) return false;
+        if (!Number.isFinite(attr.x) || !Number.isFinite(attr.y)) return false;
+
+        const verticalGap = (typeAttr.y ?? 0) - (attr.y ?? 0);
+        const horizontalGap = Math.abs((typeAttr.x ?? 0) - (attr.x ?? 0));
+        const numberHeight = attr.height || typeHeight;
+        const maxVerticalGap = Math.max(typeHeight, numberHeight) * 5;
+        const maxHorizontalGap = Math.max(typeHeight, numberHeight) * 2;
+        return verticalGap > 0 &&
+          verticalGap <= maxVerticalGap &&
+          horizontalGap <= maxHorizontalGap;
+      })
+      .sort((a, b) => {
+        const aDistance = Math.abs((typeAttr.x ?? 0) - (a.attr.x ?? 0)) +
+          ((typeAttr.y ?? 0) - (a.attr.y ?? 0));
+        const bDistance = Math.abs((typeAttr.x ?? 0) - (b.attr.x ?? 0)) +
+          ((typeAttr.y ?? 0) - (b.attr.y ?? 0));
+        return aDistance - bDistance;
+      });
+
+    const match = candidates[0];
+    if (!match) continue;
+
+    const pair: TextInstrumentPair = {
+      typeIndex,
+      numberIndex: match.index,
+      instrType,
+      instrNumber: match.value.toUpperCase(),
+    };
+    pairs.set(typeIndex, pair);
+    pairs.set(match.index, pair);
+    usedNumberIndexes.add(match.index);
+  }
+
+  return pairs;
+}
+
 /**
  * Pair the two loose TEXT/MTEXT entities used by an ISA instrument bubble:
- * the instrument code is above the numeric loop number. DXF coordinates use
+ * the instrument code is above the numeric loop number. The code may be
+ * project-specific; geometry is the primary signal. DXF coordinates use
  * increasing Y upward, so the number is below the type when number.y < type.y.
  */
 function detectTextInstrumentPairs(texts: TextRecord[]): Map<number, TextInstrumentPair> {
   const pairs = new Map<number, TextInstrumentPair>();
   const usedNumberIndexes = new Set<number>();
 
-  const loopNumberRe = /^\d{3,5}[A-Z]?$/i;
   const typeIndexes = texts
     .map((text, index) => ({ text, index, value: stripDxfCodes(text.content).toUpperCase() }))
-    .filter(({ value }) => isInstrumentType(value));
+    .filter(({ value }) => isGenericInstrumentCode(value));
 
   for (const { text: typeText, index: typeIndex, value: instrType } of typeIndexes) {
     const typeHeight = typeText.height || 1;
@@ -314,7 +397,7 @@ function detectTextInstrumentPairs(texts: TextRecord[]): Map<number, TextInstrum
       .map((text, index) => ({ text, index, value: stripDxfCodes(text.content).trim() }))
       .filter(({ text, index, value }) => {
         if (index === typeIndex || usedNumberIndexes.has(index)) return false;
-        if (!loopNumberRe.test(value)) return false;
+        if (!INSTRUMENT_VALUE_RE.test(value)) return false;
         if (text.layer !== typeText.layer) return false;
 
         const verticalGap = typeText.y - text.y;
@@ -377,9 +460,20 @@ interface InstrumentMatch {
 }
 
 function detectInstrument(
-  attrs: { tag: string; value: string }[],
+  attrs: BlockAttribute[],
   blockName = ""
 ): InstrumentMatch | null {
+  const spatialPairs = detectAttributeInstrumentPairs(attrs);
+  for (const [index, pair] of spatialPairs) {
+    if (index === pair.typeIndex) {
+      return {
+        instrType: pair.instrType,
+        instrTag: pair.instrNumber,
+        display: `${pair.instrType}-${pair.instrNumber}`,
+      };
+    }
+  }
+
   const map: Record<string, string> = {};
   attrs.forEach((a) => { map[a.tag.toUpperCase()] = a.value.trim(); });
 
@@ -654,6 +748,9 @@ export function extractEngineeringData(
 
       // Pre-compute full instrument tag for this block (e.g. "TT-2411")
       // so every attribute row can reference which instrument it belongs to
+      const attributeInstrumentPairs = blockIsTitleBlock
+        ? new Map<number, TextInstrumentPair>()
+        : detectAttributeInstrumentPairs(attrs);
       const blockInstrMatch = blockIsTitleBlock ? null : detectInstrument(attrs, blockName);
 
       // Attribute tags that hold the instrument NUMBER/LOOP in P&ID blocks
@@ -668,6 +765,7 @@ export function extractEngineeringData(
       // the block IS an instrument even if attributes are all blank or use non-standard tag names
       const blockHasInstrType = !blockIsTitleBlock && (
         blockInstrMatch !== null ||
+        attributeInstrumentPairs.size > 0 ||
         attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()) && isInstrumentType(a.value.trim()))
       );
       // Interlock block: any attribute value is an interlock code (Z, I, IL, etc.)
@@ -684,9 +782,10 @@ export function extractEngineeringData(
         && !blockHasInterlockValue
         && attrs.some((a) => INSTRUMENT_ATTR_TAGS.has(a.tag.toUpperCase().trim()));
 
-      for (const attr of attrs) {
+      for (const [attrIndex, attr] of attrs.entries()) {
         const tagUpper = attr.tag.toUpperCase().trim();
         const valTrim = attr.value.trim();
+        const isSpatialInstrumentValue = attributeInstrumentPairs.has(attrIndex);
         const isInstrAttr  = INSTRUMENT_ATTR_TAGS.has(tagUpper);
         const isIaAttr     = IA_ATTR_TAG_RE.test(tagUpper); // IA100, IA101, IA103 etc.
         const isLaAttr     = LA_STREAM_TAG_RE.test(tagUpper); // LA000, LA001 — stream diamond attrs
@@ -715,6 +814,7 @@ export function extractEngineeringData(
                            : blockHasStreamAttrs      ? "STREAM"      // PFD stream diamond (LA000/LA001, FSM* blocks)
                            : blockHasInterlockValue   ? "INTERLOCK"   // whole Z-block = INTERLOCK (blank attrs too)
                            : blockIsValve             ? "VALVES"      // blank TOP/BOTTOM/MID = valve symbol
+                           : isSpatialInstrumentValue ? "INSTRUMENTS" // project-independent spatial code/value pair
                            : isInstrAttr && isInstrValue ? "INSTRUMENTS" // TOP=TAHH/LC/FY → INSTRUMENTS before alarm check
                            : isAlarmValue             ? "ALARM"       // standalone H/L/HH alarm code
                            : isInterlockValue         ? "INTERLOCK"   // standalone Z/I interlock code
@@ -734,6 +834,7 @@ export function extractEngineeringData(
         // Keep the value on its original attribute row so the CSV preserves
         // the drawing's local TOP/BOTTOM relationship.
         const isInstrumentStackValue = blockHasInstrType && (
+          isSpatialInstrumentValue ||
           isInstrValue ||
           /^\d{3,5}[A-Z]?$/i.test(valTrim) ||
           /^[A-Z]{1,4}[-–]\d{2,5}[A-Z]?$/i.test(valTrim)
@@ -745,7 +846,8 @@ export function extractEngineeringData(
         rawRows.push({
           DWG: dwgName, HANDLE: attribHandle, Entity_Type: "ATTRIB",
           BLOCK: blockName, Layer: block.layer,
-          X: +block.x.toFixed(4), Y: +block.y.toFixed(4),
+          X: +(Number.isFinite(attr.x) ? attr.x! : block.x).toFixed(4),
+          Y: +(Number.isFinite(attr.y) ? attr.y! : block.y).toFixed(4),
           Attribute_Tag: attr.tag, Attribute_Value: cleanValue,
           Instrument: isInstrumentStackValue ? cleanValue : undefined,
           Raw_Text: "", Detected_Type: detectedType, Ref: "",
