@@ -2,4 +2,5 @@
 - [Hyphenated line numbers](hyphenated-line-numbers.md) — Treat any non-title AutoCAD value with two or more hyphens as a line number.
 - [Stacked instrument labels](stacked-instrument-labels.md) — Pair an instrument code above its numeric text as type and loop number in export.
 - [Legend semantic model](legend-semantic-model.md) — Reuse legend-derived engineering meaning across extraction and the future Magnifier app, not only fixed code lists.
+- [Process coverage checks](process-coverage-checks.md) — Use legend-guided topology and consistency checks to flag engineering information an engineer may have missed.
 - [Spatial CSV order](spatial-csv-order.md) — Preserve drawing proximity in exports instead of grouping detected entities artificially.
