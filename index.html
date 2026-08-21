@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <!-- HTTPS redirect: enforce secure connection on the custom domain -->
+    <script>
+      if (location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        location.replace('https:' + location.href.slice(5));
+      }
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>CAD Data Engine</title>
+    <link rel="icon" type="image/svg+xml" href="/AutoCAD-Data-Engine/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/AutoCAD-Data-Engine/assets/index-DFC-riVM.js"></script>
+    <link rel="stylesheet" crossorigin href="/AutoCAD-Data-Engine/assets/index-BccWB-QX.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
